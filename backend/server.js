@@ -1,83 +1,89 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// 1. Setup Environment Variables
 dotenv.config();
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 2. Initialize Gemini AI
-// Make sure your .env file has: GEMINI_API_KEY=your_key_here
+// 1. MongoDB Connection
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("Database Connected Successfully"))
+  .catch(err => console.log("DB Connection Error:", err));
+
+// 2. Database Schema (Stores the user's intelligence journey)
+const AssessmentSchema = new mongoose.Schema({
+  username: String,
+  scenario: String,
+  answer: String,
+  score: Number,
+  tone: Number,
+  logic: Number,
+  feedback: String,
+  timestamp: { type: Date, default: Date.now }
+});
+const Assessment = mongoose.model("Assessment", AssessmentSchema);
+
+// 3. AI Setup
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 3. The Main Assessment Route
-app.post("/evaluate", async (req, res) => {
-    try {
-        const { scenario, userAnswer } = req.body;
+app.post("/evaluate-and-generate", async (req, res) => {
+  try {
+    const { username, currentScenario, userAnswer } = req.body;
 
-        // Use the model we found in your diagnostic list
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-        // We tell the AI exactly how to behave
-        const prompt = `
-        You are an expert examiner. 
-        Scenario: ${scenario}
-        User Answer: ${userAnswer}
+    // THE MASTER PROMPT: Grades the old one AND creates the new one in 1 hit!
+    const prompt = `
+      You are an Intelligent Assessment System.
+      
+      Part 1: Evaluate this response:
+      Scenario: "${currentScenario}"
+      User Answer: "${userAnswer}"
+      Give a score (1-10), Tone score (1-10), and Logic score (1-10). Provide 1 sentence feedback.
 
-        Task: 
-        1. Evaluate the answer based on logic and professionalism.
-        2. Give a score out of 10.
-        3. Give 1 short sentence of feedback.
+      Part 2: Generate the NEXT Scenario:
+      If the score is > 7, make the next scenario MUCH harder.
+      If the score is < 4, make the next scenario easier and supportive.
+      Otherwise, keep it professional and balanced.
 
-        IMPORTANT: Return ONLY a raw JSON object. No markdown, no backticks, no extra text.
-        Format: {"score": 8, "feedback": "Your answer was very professional."}
-        `;
+      RETURN ONLY RAW JSON:
+      {
+        "score": number,
+        "tone": number,
+        "logic": number,
+        "feedback": "string",
+        "nextScenario": "string"
+      }
+    `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        let text = response.text().trim();
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text().replace(/```json|```/g, "").trim();
+    const data = JSON.parse(responseText);
 
-        // CLEANING: AI sometimes adds ```json ... ``` blocks. This removes them.
-        const cleanJson = text.replace(/```json|```/g, "").trim();
-        
-        console.log("AI Response received:", cleanJson);
+    // Save this session to MongoDB
+    const record = new Assessment({ 
+      username, 
+      scenario: currentScenario, 
+      answer: userAnswer, 
+      ...data 
+    });
+    await record.save();
 
-        // Parse the AI's string into a real JavaScript Object
-        const data = JSON.parse(cleanJson);
-
-        // DECISION TREE: Change the next level based on the score
-        let nextLevel = "easy";
-        if (data.score >= 7) {
-            nextLevel = "hard";
-        } else if (data.score >= 4) {
-            nextLevel = "medium";
-        }
-
-        // Send the final result back to your React website
-        res.json({
-            score: data.score,
-            feedback: data.feedback,
-            nextLevel: nextLevel
-        });
-
-    } catch (error) {
-        console.error("ERROR IN BACKEND:", error.message);
-        res.status(500).json({ 
-            error: "The AI is currently processing. Please try again in a moment.",
-            details: error.message 
-        });
-    }
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "AI Processing Failed" });
+  }
 });
 
-// 4. Start the Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`========================================`);
-    console.log(`🚀 Server is running on port ${PORT}`);
-    console.log(`🤖 Using Model: gemini-2.0-flash`);
-    console.log(`========================================`);
+// Route to get User History for the Dashboard
+app.get("/history/:username", async (req, res) => {
+  const history = await Assessment.find({ username: req.params.username }).sort({ timestamp: -1 });
+  res.json(history);
 });
+
+app.listen(5000, () => console.log("Intelligent System running on Port 5000"));
