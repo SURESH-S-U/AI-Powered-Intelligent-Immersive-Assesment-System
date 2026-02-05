@@ -1,151 +1,252 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Brain, Zap, Award, Loader2, LogIn, UserPlus, Eye, ShieldCheck, BarChart3 } from 'lucide-react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-function App() {
-  const [username, setUsername] = useState("");
-  const [step, setStep] = useState(1); // 1: Login, 2: Test, 3: Final Report
-  const [qCount, setQCount] = useState(1);
-  const [scenario, setScenario] = useState("Your first task: A customer is shouting because of a delayed order. How do you respond?");
-  const [answer, setAnswer] = useState("");
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [totalScore, setTotalScore] = useState(0);
+const App = () => {
+    // UI & Auth States
+    const [step, setStep] = useState("auth"); // auth, selection, test, report
+    const [isLogin, setIsLogin] = useState(true);
+    const [user, setUser] = useState({ name: "", email: "", password: "" });
+    
+    // Assessment States
+    const [mode, setMode] = useState(null);
+    const [qCount, setQCount] = useState(1);
+    const [scenario, setScenario] = useState(null);
+    const [answer, setAnswer] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [evaluation, setEvaluation] = useState(null);
+    const [scoreHistory, setScoreHistory] = useState([]);
 
-  const handleEvaluate = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("http://localhost:5000/evaluate-and-generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, currentScenario: scenario, userAnswer: answer, questionCount: qCount })
-      });
-      const data = await res.json();
-      setResult(data);
-      setTotalScore(prev => prev + data.score);
-    } catch (err) {
-      alert("Check your connection!");
-    }
-    setLoading(false);
-  };
+    // --- NAVIGATION LOGIC ---
+    const handleAuth = () => {
+        if (!user.name || !user.email) return alert("Please fill all fields");
+        setStep("selection");
+    };
 
-  const proceed = () => {
-    if (qCount >= 10) {
-      setStep(3); // Go to Final Report
-    } else {
-      setScenario(result.nextScenario);
-      setQCount(qCount + 1);
-      setAnswer("");
-      setResult(null);
-    }
-  };
+    const startMode = async (mId) => {
+        setMode(mId);
+        await fetchNewChallenge(mId, 1);
+        setStep("test");
+    };
 
-  return (
-    <div className="min-vh-100 bg-light py-5 px-3">
-      <div className="container" style={{maxWidth: '900px'}}>
-        
-        {/* LOGIN SCREEN */}
-        {step === 1 && (
-          <div className="card shadow-lg border-0 p-5 text-center rounded-5">
-            <h1 className="fw-bold text-primary mb-3">Intelligent Assessment System</h1>
-            <p className="text-muted mb-4">You will face 10 adaptive AI scenarios. Good luck.</p>
-            <input className="form-control form-control-lg mb-3 text-center rounded-pill" placeholder="Enter Full Name" onChange={e => setUsername(e.target.value)} />
-            <button className="btn btn-primary btn-lg w-100 rounded-pill" onClick={() => setStep(2)} disabled={!username}>Start Assessment</button>
-          </div>
-        )}
+    // --- AI LOGIC ---
+    const fetchNewChallenge = async (mId, count) => {
+        setLoading(true);
+        try {
+            const res = await fetch("http://localhost:5000/generate-assessment", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: mId, questionCount: count })
+            });
+            const data = await res.json();
+            setScenario(data);
+        } catch (e) { alert("AI connection failed. Ensure backend is running!"); }
+        setLoading(false);
+    };
 
-        {/* TEST SCREEN */}
-        {step === 2 && (
-          <div>
-            {/* Progress Visualization */}
-            <div className="mb-4">
-              <div className="d-flex justify-content-between mb-1">
-                <span className="fw-bold text-primary">Assessment Progress</span>
-                <span className="fw-bold">{qCount} / 10</span>
-              </div>
-              <div className="progress(round)" style={{height: '10px', borderRadius: '10px'}}>
-                <div className="progress-bar progress-bar-striped progress-bar-animated" style={{width: `${(qCount/10)*100}%`}}></div>
-              </div>
+    const submitAnswer = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch("http://localhost:5000/evaluate", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    username: user.name, 
+                    mode, 
+                    challenge: scenario.challenge, 
+                    answer 
+                })
+            });
+            const result = await res.json();
+            setEvaluation(result);
+            setScoreHistory([...scoreHistory, result.score]);
+        } catch (e) { alert("Evaluation failed."); }
+        setLoading(false);
+    };
+
+    const proceed = () => {
+        if (qCount >= 10) return setStep("report");
+        setEvaluation(null);
+        setAnswer("");
+        setQCount(qCount + 1);
+        fetchNewChallenge(mode, qCount + 1);
+    };
+
+    // --- RENDER HELPERS ---
+    const GlassCard = ({ children, className }) => (
+        <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }} 
+            animate={{ opacity: 1, scale: 1 }}
+            className={`bg-white bg-opacity-10 backdrop-blur-md border border-white border-opacity-20 rounded-5 shadow-2xl p-4 ${className}`}
+        >
+            {children}
+        </motion.div>
+    );
+
+    return (
+        <div className="min-vh-100 text-white overflow-hidden" style={{ 
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%)',
+            fontFamily: "'Inter', sans-serif"
+        }}>
+            {/* Background Animated Blobs */}
+            <div className="position-fixed w-100 h-100 overflow-hidden" style={{ zIndex: 0 }}>
+                <div className="position-absolute bg-primary rounded-circle filter-blur-3xl opacity-25" style={{ width: '400px', height: '400px', top: '-10%', left: '-5%' }}></div>
+                <div className="position-absolute bg-purple-600 rounded-circle filter-blur-3xl opacity-20" style={{ width: '500px', height: '500px', bottom: '-10%', right: '-5%' }}></div>
             </div>
 
-            <div className="row g-4">
-              <div className="col-lg-7">
-                <div className="card shadow-sm border-0 p-4 h-100 rounded-4">
-                  <h6 className="text-uppercase text-muted fw-bold">Scenario {qCount}</h6>
-                  <p className="fs-4 py-3 text-dark italic">"{scenario}"</p>
-                  
-                  {!result ? (
-                    <>
-                      <textarea className="form-control border-0 bg-light mb-3" rows="6" placeholder="Type your response..." value={answer} onChange={e => setAnswer(e.target.value)} style={{fontSize: '1.1rem'}} />
-                      <button className="btn btn-primary btn-lg rounded-pill px-5" onClick={handleEvaluate} disabled={loading || !answer}>
-                        {loading ? "AI is Analyzing..." : "Analyze & Continue"}
-                      </button>
-                    </>
-                  ) : (
-                    <div className="animate-in">
-                      <div className="p-3 bg-light rounded-3 mb-3 border-start border-primary border-4">
-                        <p className="mb-0">{result.feedback}</p>
-                      </div>
-                      <button className="btn btn-dark btn-lg rounded-pill w-100" onClick={proceed}>
-                        {qCount === 10 ? "View Final Performance Report" : "Go to Next Scenario"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div className="container position-relative py-5" style={{ zIndex: 1 }}>
+                <AnimatePresence mode="wait">
+                    
+                    {/* STEP 1: AUTHENTICATION */}
+                    {step === "auth" && (
+                        <div className="row justify-content-center align-items-center min-vh-75">
+                            <div className="col-md-5">
+                                <GlassCard>
+                                    <div className="text-center mb-4">
+                                        <div className="bg-primary bg-opacity-20 d-inline-block p-3 rounded-circle mb-3">
+                                            <Brain size={40} className="text-primary" />
+                                        </div>
+                                        <h2 className="fw-bold">{isLogin ? "Welcome Back" : "Create Account"}</h2>
+                                        <p className="text-white-50">Join the Nexa Intelligence Assessment</p>
+                                    </div>
+                                    {!isLogin && (
+                                        <div className="mb-3">
+                                            <label className="small opacity-75">Full Name</label>
+                                            <input className="form-control bg-dark bg-opacity-50 text-white border-secondary" onChange={e => setUser({...user, name: e.target.value})} />
+                                        </div>
+                                    )}
+                                    <div className="mb-3">
+                                        <label className="small opacity-75">Email Address</label>
+                                        <input className="form-control bg-dark bg-opacity-50 text-white border-secondary" onChange={e => setUser({...user, email: e.target.value})} />
+                                    </div>
+                                    <div className="mb-4">
+                                        <label className="small opacity-75">Password</label>
+                                        <input type="password" className="form-control bg-dark bg-opacity-50 text-white border-secondary" />
+                                    </div>
+                                    <button className="btn btn-primary w-100 rounded-pill py-2 fw-bold" onClick={handleAuth}>
+                                        {isLogin ? <LogIn size={18} className="me-2"/> : <UserPlus size={18} className="me-2"/>}
+                                        {isLogin ? "Sign In" : "Register Now"}
+                                    </button>
+                                    <p className="text-center mt-3 small opacity-50 cursor-pointer" onClick={() => setIsLogin(!isLogin)}>
+                                        {isLogin ? "New here? Create an account" : "Already have an account? Sign in"}
+                                    </p>
+                                </GlassCard>
+                            </div>
+                        </div>
+                    )}
 
-              {/* NEW WONDERFUL UI: Skill Bars */}
-              <div className="col-lg-5">
-                <div className="card shadow-sm border-0 p-4 h-100 rounded-4 text-center">
-                  <h5 className="fw-bold mb-4">Performance Metrics</h5>
-                  
-                  {result ? (
-                    <div className="mt-2">
-                      <div className="mb-4">
-                        <div className="d-flex justify-content-between small fw-bold"><span>Logic & Strategy</span><span>{result.logic*10}%</span></div>
-                        <div className="progress mt-1"><div className="progress-bar bg-info" style={{width: `${result.logic*10}%`}}></div></div>
-                      </div>
-                      <div className="mb-4">
-                        <div className="d-flex justify-content-between small fw-bold"><span>Emotional Intelligence</span><span>{result.tone*10}%</span></div>
-                        <div className="progress mt-1"><div className="progress-bar bg-success" style={{width: `${result.tone*10}%`}}></div></div>
-                      </div>
-                      <h1 className="display-2 fw-black text-primary mt-4">{result.score}<span className="fs-4 text-muted">/10</span></h1>
-                    </div>
-                  ) : (
-                    <div className="py-5 text-muted italic">Waiting for your response...</div>
-                  )}
-                </div>
-              </div>
+                    {/* STEP 2: MODE SELECTION */}
+                    {step === "selection" && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+                            <h1 className="display-4 fw-black mb-2">Choose Your Pathway</h1>
+                            <p className="text-white-50 mb-5">Select a specialized AI-driven intelligence simulation</p>
+                            <div className="row g-4">
+                                {[
+                                    { id: 1, name: "Enigma Mode", icon: <Eye />, color: "text-info", desc: "Visual Puzzles & Imposter Riddles" },
+                                    { id: 2, name: "Nexus Mode", icon: <ShieldCheck />, color: "text-success", desc: "Real-world Crisis & Situation Handling" },
+                                    { id: 3, name: "Omega Mode", icon: <Zap />, color: "text-warning", desc: "The Hybrid Cognitive Stress Test" }
+                                ].map(m => (
+                                    <div key={m.id} className="col-md-4">
+                                        <GlassCard className="h-100 cursor-pointer hover-lift" onClick={() => startMode(m.id)}>
+                                            <div className={`${m.color} mb-3`}>{m.icon}</div>
+                                            <h4 className="fw-bold">{m.name}</h4>
+                                            <p className="small opacity-75">{m.desc}</p>
+                                            <button className="btn btn-sm btn-outline-light rounded-pill mt-3 px-4">Initialize</button>
+                                        </GlassCard>
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* STEP 3: ASSESSMENT TEST */}
+                    {step === "test" && scenario && (
+                        <div className="row justify-content-center">
+                            <div className="col-lg-11">
+                                <div className="d-flex justify-content-between mb-3 small opacity-50">
+                                    <span>{user.name} • Mode {mode}</span>
+                                    <span>PROGRESS: {qCount}/10</span>
+                                </div>
+                                <div className="progress bg-dark mb-4" style={{ height: '6px' }}>
+                                    <motion.div className="progress-bar bg-primary" initial={{ width: 0 }} animate={{ width: `${qCount*10}%` }}></motion.div>
+                                </div>
+                                <div className="row g-4">
+                                    <div className="col-md-6">
+                                        <div className="rounded-5 overflow-hidden border border-white border-opacity-10 shadow-lg position-relative" style={{ height: '450px' }}>
+                                            <img 
+                                                src={`https://image.pollinations.ai/prompt/${scenario.imagePrompt}?width=800&height=800&nologo=true&seed=${qCount}`} 
+                                                className="w-100 h-100 object-fit-cover opacity-75" alt="AI Scene" 
+                                            />
+                                            <div className="position-absolute top-0 start-0 w-100 h-100 bg-gradient-to-t from-black opacity-40"></div>
+                                        </div>
+                                    </div>
+                                    <div className="col-md-6">
+                                        <GlassCard className="h-100 d-flex flex-column justify-content-between">
+                                            <div>
+                                                <h3 className="fw-bold mb-4">{scenario.challenge}</h3>
+                                                {!evaluation ? (
+                                                    <textarea 
+                                                        className="form-control bg-white bg-opacity-5 text-white border-secondary rounded-4 p-3" 
+                                                        rows="6" placeholder="Your solution..." value={answer} onChange={e => setAnswer(e.target.value)}
+                                                    />
+                                                ) : (
+                                                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
+                                                        <div className="display-2 fw-black text-primary mb-2">{evaluation.score}/10</div>
+                                                        <p className="bg-white bg-opacity-10 p-3 rounded-4 italic">"{evaluation.feedback}"</p>
+                                                    </motion.div>
+                                                )}
+                                            </div>
+                                            <div className="mt-4">
+                                                {!evaluation ? (
+                                                    <button className="btn btn-primary w-100 rounded-pill py-3 fw-bold" onClick={submitAnswer} disabled={loading || !answer}>
+                                                        {loading ? <Loader2 className="spinner-border-sm me-2 animate-spin" /> : "Analyze Intelligence"}
+                                                    </button>
+                                                ) : (
+                                                    <button className="btn btn-outline-light w-100 rounded-pill py-3 fw-bold" onClick={proceed}>
+                                                        Continue Simulation &rarr;
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </GlassCard>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 4: FINAL REPORT */}
+                    {step === "report" && (
+                        <div className="text-center py-5">
+                            <Award size={100} className="text-warning mb-4" />
+                            <h1 className="display-1 fw-black">SIMULATION COMPLETE</h1>
+                            <h3 className="text-primary mb-5">{user.name}</h3>
+                            <div className="row justify-content-center">
+                                <div className="col-md-4">
+                                    <GlassCard>
+                                        <BarChart3 size={30} className="text-info mb-3" />
+                                        <h5>Average Intelligence Score</h5>
+                                        <div className="display-2 fw-bold">
+                                            {(scoreHistory.reduce((a, b) => a + b, 0) / 10).toFixed(1)}
+                                        </div>
+                                        <button className="btn btn-primary rounded-pill mt-4 w-100" onClick={() => window.location.reload()}>Re-Enter Nexus</button>
+                                    </GlassCard>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </AnimatePresence>
             </div>
-          </div>
-        )}
 
-        {/* FINAL REPORT SCREEN */}
-        {step === 3 && (
-          <div className="card shadow-lg border-0 p-5 text-center rounded-5 bg-white">
-            <div className="mb-4">
-               <span className="display-1">🏆</span>
-            </div>
-            <h1 className="fw-bold text-dark">Assessment Complete</h1>
-            <h4 className="text-primary mb-4">{username}</h4>
-            
-            <div className="row justify-content-center mb-4">
-               <div className="col-6 col-md-4 p-3 bg-light rounded-4">
-                  <h6 className="text-muted uppercase small">Total Average</h6>
-                  <h2 className="fw-bold">{(totalScore/10).toFixed(1)}/10</h2>
-               </div>
-            </div>
-
-            <p className="lead px-lg-5 text-secondary">
-              "You have completed the 10-level adaptive simulation. Based on your inputs, your behavioral intelligence is <b>{totalScore > 70 ? 'Superior' : totalScore > 50 ? 'Advanced' : 'Developing'}</b>."
-            </p>
-
-            <button className="btn btn-primary btn-lg rounded-pill px-5 mt-4" onClick={() => window.location.reload()}>Restart Assessment</button>
-          </div>
-        )}
-
-      </div>
-    </div>
-  );
-}
+            <style>{`
+                .filter-blur-3xl { filter: blur(100px); }
+                .cursor-pointer { cursor: pointer; }
+                .hover-lift { transition: transform 0.3s ease; }
+                .hover-lift:hover { transform: translateY(-10px); }
+                .fw-black { font-weight: 900; }
+                .italic { font-style: italic; }
+            `}</style>
+        </div>
+    );
+};
 
 export default App;

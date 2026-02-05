@@ -2,113 +2,176 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// 1. Setup Environment Variables
 dotenv.config();
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 2. Connect to MongoDB
-// Make sure your .env file has: MONGO_URI=mongodb+srv://...
+// 1. DATABASE CONNECTION
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Assessment Database Connected"))
-  .catch(err => console.error("❌ MongoDB Connection Error:", err));
+    .then(() => console.log("🚀 MongoDB Connected"))
+    .catch(err => console.log("DB Error:", err));
 
-// 3. Define the Assessment Schema
-const AssessmentSchema = new mongoose.Schema({
-  username: String,
-  questionNumber: Number,
-  scenario: String,
-  userAnswer: String,
-  score: Number,
-  tone: Number,
-  logic: Number,
-  feedback: String,
-  timestamp: { type: Date, default: Date.now }
+// 2. DATA MODELS
+const UserSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, unique: true, required: true },
+    password: { type: String, required: true }
 });
+const User = mongoose.model("User", UserSchema);
 
+const AssessmentSchema = new mongoose.Schema({
+    username: String,
+    mode: String,
+    questionNumber: Number,
+    scenario: String,
+    answer: String,
+    score: Number,
+    logic: Number,      // Added to match UI
+    tone: Number,       // Added to match UI
+    feedback: String,
+    timestamp: { type: Date, default: Date.now }
+});
 const Assessment = mongoose.model("Assessment", AssessmentSchema);
 
-// 4. Initialize Gemini AI
+// 3. AI INITIALIZATION
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 5. THE MAIN ROUTE: Evaluate Answer & Generate Next Scenario
-app.post("/evaluate-and-generate", async (req, res) => {
-  try {
-    const { username, currentScenario, userAnswer, questionCount } = req.body;
+// Helper function to clean AI JSON response
+const parseAIResponse = (text) => {
+    try {
+        const cleanText = text.replace(/```json|```/g, "").trim();
+        return JSON.parse(cleanText);
+    } catch (e) {
+        console.error("JSON Parsing Error:", text);
+        throw new Error("Invalid AI Response format");
+    }
+};
 
-    // Use the stable flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
-    // The prompt that handles both grading and dynamic question generation
-    const prompt = `
-      You are an Intelligent Assessment System. 
-      User: ${username}
-      Current Question Number: ${questionCount} of 10
-
-      EVALUATE THIS SESSION:
-      Scenario: "${currentScenario}"
-      User Answer: "${userAnswer}"
-
-      TASK:
-      1. Rate the answer 1-10 for 'score', 'tone', and 'logic'.
-      2. Provide a short 1-sentence feedback.
-      3. Generate the NEXT Scenario:
-         - If questionCount < 10: Create a new realistic work scenario. If they scored high, make it harder. If low, make it simpler.
-         - If questionCount is 10: Set nextScenario to "COMPLETED".
-
-      RETURN ONLY A RAW JSON OBJECT. No markdown, no backticks.
-      Format: {"score": 8, "tone": 7, "logic": 9, "feedback": "Your text here", "nextScenario": "Next scenario text here"}
-    `;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text().trim();
-
-    // Cleaning the response (Removing backticks if AI adds them)
-    const cleanJson = text.replace(/```json|```/g, "").trim();
-    const data = JSON.parse(cleanJson);
-
-    // 6. Save the data to MongoDB for the final report/history
-    const record = new Assessment({
-      username,
-      questionNumber: questionCount,
-      scenario: currentScenario,
-      userAnswer: userAnswer,
-      score: data.score,
-      tone: data.tone,
-      logic: data.logic,
-      feedback: data.feedback
-    });
-    await record.save();
-
-    // 7. Send result to Frontend
-    res.json(data);
-
-  } catch (error) {
-    console.error("AI or DB Error:", error.message);
-    res.status(500).json({ error: "System encountered an error. Please retry." });
-  }
+// 4. AUTHENTICATION ROUTES
+app.post("/auth/register", async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({ name, email, password: hashedPassword });
+        await newUser.save();
+        res.status(201).json({ message: "User Registered" });
+    } catch (err) {
+        res.status(400).json({ error: "Email already exists or registration failed" });
+    }
 });
 
-// 8. Dashboard Route: Get all history for a user
+app.post("/auth/login", async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
+        if (user && await bcrypt.compare(password, user.password)) {
+            const token = jwt.sign({ id: user._id, name: user.name }, "secret_key", { expiresIn: "1h" });
+            res.json({ token, name: user.name });
+        } else {
+            res.status(401).json({ error: "Invalid Credentials" });
+        }
+    } catch (e) {
+        res.status(500).json({ error: "Login error" });
+    }
+});
+
+// 5. INTELLIGENT ASSESSMENT ROUTES
+app.post("/generate-assessment", async (req, res) => {
+    try {
+        const { mode, questionCount } = req.body;
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+
+        let modeContext = "";
+        if (mode === 1) modeContext = "Enigma Mode: Visual logic riddles and 'Find the Imposter' scenarios.";
+        if (mode === 2) modeContext = "Nexus Mode: Real-world behavioral crises and ethical dilemmas.";
+        if (mode === 3) modeContext = "Omega Mode: A hybrid of logical traps and high-pressure situational choices.";
+
+        const prompt = `
+            Task: Act as an Intelligent Simulation Master.
+            Current Mode: ${modeContext}
+            Question: ${questionCount} of 10.
+
+            Instructions:
+            1. Create a compelling challenge for the user. 
+            2. Provide 3 descriptive keywords for an AI Image Generator based on the scene.
+
+            RETURN ONLY RAW JSON:
+            {
+                "challenge": "The text of the riddle or situation",
+                "imagePrompt": "3 detailed keywords",
+                "hint": "A subtle clue"
+            }
+        `;
+
+        const result = await model.generateContent(prompt);
+        const data = parseAIResponse(result.response.text());
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: "AI failed to generate challenge" });
+    }
+});
+
+app.post("/evaluate", async (req, res) => {
+    try {
+        const { username, mode, challenge, answer } = req.body;
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+
+        const prompt = `
+            Evaluate the user's intelligence based on this challenge: "${challenge}"
+            User's Answer: "${answer}"
+
+            Task:
+            1. Rate Score (1-10).
+            2. Assess Logic level (1-100).
+            3. Assess Tone/Professionalism (1-100).
+            4. Provide 1 sentence of constructive feedback.
+
+            RETURN ONLY RAW JSON:
+            {"score": 8, "logic": 85, "tone": 70, "feedback": "Example feedback."}
+        `;
+
+        const result = await model.generateContent(prompt);
+        const data = parseAIResponse(result.response.text());
+
+        // Map mode number to Name for the DB
+        const modeNames = { 1: "Enigma", 2: "Nexus", 3: "Omega" };
+
+        // Save session to MongoDB
+        const record = new Assessment({
+            username,
+            mode: modeNames[mode] || "Unknown",
+            scenario: challenge,
+            answer: answer,
+            score: data.score,
+            logic: data.logic,
+            tone: data.tone,
+            feedback: data.feedback
+        });
+        await record.save();
+
+        res.json(data);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Evaluation failed" });
+    }
+});
+
+// 6. DASHBOARD HISTORY ROUTE
 app.get("/history/:username", async (req, res) => {
-  try {
-    const history = await Assessment.find({ username: req.params.username }).sort({ questionNumber: 1 });
-    res.json(history);
-  } catch (err) {
-    res.status(500).json({ error: "Could not fetch history" });
-  }
+    try {
+        const data = await Assessment.find({ username: req.params.username })
+            .sort({ timestamp: -1 })
+            .limit(10); // Keep it clean for the UI
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: "History retrieval failed" });
+    }
 });
 
-// 9. Start the Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`----------------------------------------`);
-    console.log(`🚀 Intelligent Server Running on Port ${PORT}`);
-    console.log(`🤖 AI Model: gemini-flash-latest`);
-    console.log(`----------------------------------------`);
-});
+app.listen(PORT, () => console.log(`🚀 Intelligent API running on port ${PORT}`));
