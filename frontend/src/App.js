@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState} from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Zap, Award, Loader2, LogIn, UserPlus, Eye, ShieldCheck, BarChart3, ArrowRight, Sparkles } from 'lucide-react';
+import { Brain, Zap, Award, Loader2,Eye, ShieldCheck, BarChart3, ArrowRight, Sparkles } from 'lucide-react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 // --- STYLED SUB-COMPONENTS (Defined outside to prevent focus loss) ---
@@ -17,8 +17,11 @@ const GlassCard = ({ children, className = "", delay = 0 }) => (
 );
 
 const App = () => {
+    // --- PERSISTENCE LOGIC ---
+    // Initialize step based on whether a token exists in storage
+    const [step, setStep] = useState(localStorage.getItem("token") ? "selection" : "auth"); 
+    
     // UI & Auth States
-    const [step, setStep] = useState("auth"); 
     const [isLogin, setIsLogin] = useState(true);
     const [formData, setFormData] = useState({ name: "", email: "", password: "" });
     const [token, setToken] = useState(localStorage.getItem("token"));
@@ -120,6 +123,11 @@ const App = () => {
         fetchNewChallenge(mode, qCount + 1);
     };
 
+    const logout = () => {
+        localStorage.clear();
+        window.location.reload();
+    };
+
     return (
         <div className="app-container">
             <div className="bg-blobs">
@@ -127,6 +135,15 @@ const App = () => {
                 <div className="blob blob-2"></div>
                 <div className="blob blob-3"></div>
             </div>
+
+            {/* Logout Button (Only visible when logged in) */}
+            {token && step === "selection" && (
+                <div className="position-absolute top-0 end-0 p-4" style={{ zIndex: 10 }}>
+                    <button onClick={logout} className="btn-glow-outline px-3 py-2 small" style={{ fontSize: '0.8rem' }}>
+                        Terminate Session
+                    </button>
+                </div>
+            )}
 
             <div className="container position-relative py-5 min-vh-100 d-flex flex-column justify-content-center">
                 <AnimatePresence mode="wait">
@@ -176,7 +193,8 @@ const App = () => {
                         <motion.div key="selection-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
                             <div className="mb-5">
                                 <span className="badge rounded-pill bg-primary bg-opacity-25 text-primary px-3 py-2 mb-3">Phase 02: Protocol Selection</span>
-                                <h1 className="display-4 fw-bold mb-2">Choose Your Pathway</h1>
+                                <h1 className="display-4 fw-bold mb-2">Welcome Back, {localStorage.getItem("userName")}</h1>
+                                <p className="text-white-50">Select a specialized intelligence simulation to begin synchronization.</p>
                             </div>
                             <div className="row g-4 justify-content-center">
                                 {[
@@ -266,8 +284,8 @@ const App = () => {
                                     <GlassCard className="p-5">
                                         <BarChart3 size={40} className="text-primary mb-3" />
                                         <h5 className="text-white-50">Average Intelligence Score</h5>
-                                        <div className="display-1 fw-bold">{(scoreHistory.reduce((a, b) => a + b, 0) / 10).toFixed(1)}</div>
-                                        <button className="btn-glow-primary w-100 mt-4" onClick={() => window.location.reload()}>Restart Neural Link</button>
+                                        <div className="display-1 fw-bold">{(scoreHistory.reduce((a, b) => a + b, 0) / (scoreHistory.length || 1)).toFixed(1)}</div>
+                                        <button className="btn-glow-primary w-100 mt-4" onClick={() => setStep("selection")}>Return to Nexus</button>
                                     </GlassCard>
                                 </div>
                             </div>
@@ -293,6 +311,7 @@ const App = () => {
                 .btn-glow-primary { background: var(--primary); color: white; border: none; border-radius: 100px; padding: 0.75rem 1.5rem; font-weight: 600; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); transition: 0.3s; }
                 .btn-glow-primary:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(59, 130, 246, 0.5); }
                 .btn-glow-outline { background: transparent; color: white; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 100px; padding: 0.75rem 1.5rem; transition: 0.3s; }
+                .btn-glow-outline:hover { background: rgba(255,255,255,0.1); border-color: white; color: white; }
                 .mode-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 2rem; cursor: pointer; transition: 0.3s; height: 100%; }
                 .mode-card:hover { background: rgba(255, 255, 255, 0.07); transform: translateY(-10px); border-color: var(--primary); }
                 .mode-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem; }
