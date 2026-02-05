@@ -8,7 +8,6 @@ const GlassCard = ({ children, className = "" }) => (
 );
 
 const App = () => {
-    // PERSISTENCE LOGIC
     const [token, setToken] = useState(localStorage.getItem("token"));
     const [step, setStep] = useState(localStorage.getItem("step") || (localStorage.getItem("token") ? "selection" : "auth"));
     const [mode, setMode] = useState(JSON.parse(localStorage.getItem("mode")) || null);
@@ -23,6 +22,23 @@ const App = () => {
     const [evaluation, setEvaluation] = useState(null);
     const [stats, setStats] = useState({ avg: 0, total: 0, high: 0 });
 
+    // --- BROWSER BACK BUTTON FIX ---
+    useEffect(() => {
+        const handlePopState = (event) => {
+            if (event.state && event.state.step) {
+                setStep(event.state.step);
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
+
+    const navigateTo = (newStep) => {
+        setStep(newStep);
+        window.history.pushState({ step: newStep }, "", "");
+    };
+
+    // --- PERSISTENCE ---
     useEffect(() => {
         localStorage.setItem("step", step);
         localStorage.setItem("mode", JSON.stringify(mode));
@@ -57,7 +73,7 @@ const App = () => {
             if (res.ok) {
                 if (isLogin) {
                     localStorage.setItem("token", data.token); localStorage.setItem("userName", data.name);
-                    setToken(data.token); setStep("selection");
+                    setToken(data.token); navigateTo("selection");
                 } else { alert("Login now."); setIsLogin(true); }
             } else alert(data.error);
         } catch (err) { alert("Server error"); }
@@ -75,9 +91,8 @@ const App = () => {
     };
 
     const startMode = async (mId) => {
-        // Clear old test data so it doesn't show old questions on refresh
         setScenario(null); setAnswer(""); setEvaluation(null); setQCount(1); setScoreHistory([]);
-        setMode(mId); setStep("test");
+        setMode(mId); navigateTo("test");
         await fetchChallenge(mId, 1);
     };
 
@@ -92,7 +107,7 @@ const App = () => {
     };
 
     const nextStep = () => {
-        if (qCount >= 5) { setStep("report"); fetchDashboard(); }
+        if (qCount >= 5) { navigateTo("report"); fetchDashboard(); }
         else { setEvaluation(null); setAnswer(""); const nextQ = qCount + 1; setQCount(nextQ); fetchChallenge(mode, nextQ); }
     };
 
@@ -131,7 +146,6 @@ const App = () => {
 
                     {step === "selection" && (
                         <motion.div key="selection" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-                            {/* DASHBOARD BAR */}
                             <div className="row justify-content-center mb-5">
                                 <div className="col-md-10">
                                     <GlassCard className="p-4 bg-primary bg-opacity-10 border-primary border-opacity-20">
@@ -147,18 +161,17 @@ const App = () => {
                                     </GlassCard>
                                 </div>
                             </div>
-
                             <h1 className="display-4 fw-bold mb-5">Neural Protocols</h1>
                             <div className="row g-4 justify-content-center">
                                 {[
-                                    { id: 1, name: "Visual", icon: <Eye />, color: "cyan", desc: "Observation & Perception" },
-                                    { id: 2, name: "Logical", icon: <ShieldCheck />, color: "emerald", desc: "Ethics & Reason" },
-                                    { id: 3, name: "Intelligence", icon: <Zap />, color: "amber", desc: "Conflict Resolution" }
+                                    { id: 1, name: "Visual", icon: <Eye />, color: "cyan", desc: "Perception & Details" },
+                                    { id: 2, name: "Logical", icon: <ShieldCheck />, color: "emerald", desc: "Ethics & Decisions" },
+                                    { id: 3, name: "Intelligence", icon: <Zap />, color: "amber", desc: "Conflict Solving" }
                                 ].map((m) => (
                                     <div key={m.id} className="col-md-4 col-lg-3">
                                         <div className="mode-card" onClick={() => startMode(m.id)}>
                                             <div className={`mode-icon bg-${m.color}`}>{m.icon}</div>
-                                            <h4 className="fw-bold">{m.name}</h4>
+                                            <h4 className="fw-bold">{m.name} Protocol</h4>
                                             <p className="small opacity-75">{m.desc}</p>
                                             <div className="mode-footer mt-4"><span>Initialize</span><ArrowRight size={16} /></div>
                                         </div>
@@ -182,7 +195,7 @@ const App = () => {
                                     <div className="col-md-6">
                                         <div className="image-viewport">
                                             {loading ? <div className="w-100 h-100 d-flex align-items-center justify-content-center bg-dark"><Loader2 className="spinner text-primary" size={40}/></div> : 
-                                            <img src={`https://image.pollinations.ai/prompt/${scenario?.imagePrompt}?width=800&height=800&nologo=true&seed=${qCount}`} alt="Scene" />}
+                                            <img src={`https://image.pollinations.ai/prompt/${encodeURIComponent(scenario?.imagePrompt || 'simulation')}?width=800&height=800&nologo=true&seed=${qCount}`} alt="Scene" onError={(e) => e.target.src = "https://placehold.co/800x800/020617/3b82f6?text=Neural+Link"} />}
                                             <div className="scanline"></div>
                                         </div>
                                     </div>
@@ -190,9 +203,7 @@ const App = () => {
                                         <GlassCard className="h-100 p-4 d-flex flex-column justify-content-between">
                                             <div>
                                                 <div className="d-flex align-items-center mb-3 opacity-50 small uppercase tracking-widest"><Sparkles size={16} className="me-2 text-primary" /> Challenge</div>
-                                                {loading ? <div className="placeholder-glow"><span className="placeholder col-12 bg-secondary"></span><span className="placeholder col-8 bg-secondary"></span></div> : 
-                                                <h4 className="fw-bold mb-4">{scenario?.challenge}</h4>}
-                                                
+                                                <h4 className="fw-bold mb-4">{scenario?.challenge}</h4>
                                                 {!evaluation ? (
                                                     <textarea className="custom-textarea" rows="6" placeholder="Describe your reaction..." value={answer} onChange={e => setAnswer(e.target.value)} disabled={loading} />
                                                 ) : (
@@ -229,10 +240,7 @@ const App = () => {
                                     <BarChart3 size={40} className="text-primary mb-3" />
                                     <h5 className="opacity-50">Session Accuracy</h5>
                                     <div className="display-1 fw-bold">{(scoreHistory.reduce((a, b) => a + b, 0) / 5).toFixed(1)}</div>
-                                    <button className="btn-glow-primary w-100 mt-4" onClick={() => {
-                                        ["mode", "qCount", "scenario", "scoreHistory", "step"].forEach(k => localStorage.removeItem(k));
-                                        setStep("selection");
-                                    }}>Return to Nexus</button>
+                                    <button className="btn-glow-primary w-100 mt-4" onClick={() => navigateTo("selection")}>Return to Nexus</button>
                                 </GlassCard>
                             </div>
                         </div>
@@ -256,7 +264,8 @@ const App = () => {
                 .custom-input:focus, .custom-textarea:focus { outline: none; border-color: var(--primary); }
                 .btn-glow-primary { background: var(--primary); color: white; border: none; border-radius: 100px; padding: 0.75rem 1.5rem; font-weight: 600; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); transition: 0.3s; cursor: pointer; }
                 .btn-glow-primary:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(59, 130, 246, 0.5); }
-                .btn-glow-outline { background: transparent; color: white; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 100px; padding: 0.75rem 1.5rem; cursor: pointer; }
+                .btn-glow-outline { background: transparent; color: white; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 100px; padding: 0.75rem 1.5rem; cursor: pointer; transition: 0.3s; }
+                .btn-glow-outline:hover { background: rgba(255,255,255,0.1); }
                 .mode-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 2rem; cursor: pointer; transition: 0.3s; height: 100%; }
                 .mode-card:hover { transform: translateY(-10px); border-color: var(--primary); }
                 .mode-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem; }
