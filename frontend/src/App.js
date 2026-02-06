@@ -256,7 +256,7 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
                             <select className="custom-input" value={qCount} style={{width: '60%'}} onChange={(e) => setQCount(parseInt(e.target.value))}>
                                 {[1, 2, 3, 5, 10, 15, 20].map(n => <option key={n} value={n} style={{background: '#020617'}}>{n} Qs</option>)}
                             </select>
-                            <input type="number" className="custom-input" placeholder="Custom" style={{width: '40%'}} onChange={(e) => setQCount(parseInt(e.target.value) || 1)} />
+                            <input className="custom-input" placeholder="Custom" style={{width: '40%'}} onChange={(e) => setQCount(parseInt(e.target.value) || 1)} />
                         </div>
                     </div>
                     <div className="col-md-3">
