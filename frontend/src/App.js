@@ -346,13 +346,18 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
             });
             const data = await res.json();
             setQuestions(data.questions || []);
-        } catch (e) { alert("Core Link Failed"); onEnd(); }
-        finally { setLoading(false); }
+        } catch (e) { 
+            alert("Core Link Failed"); 
+            onEnd(); 
+        } finally { 
+            setLoading(false); 
+        }
     }, [user.level, domains, type, limit, onEnd]);
 
-    useEffect(() => { fetchAllQuestions(); }, [fetchAllQuestions]);
+    useEffect(() => { 
+        fetchAllQuestions(); 
+    }, [fetchAllQuestions]);
 
-    // NEW: Wrapped in useCallback to solve warning
     const submitBatch = useCallback(async (finalAnswers) => {
         setEvaluating(true);
         try {
@@ -362,42 +367,45 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
             });
             const data = await res.json();
             setResults(data.results);
-        } catch (e) { alert("Evaluation sync error."); }
-        finally { setEvaluating(false); }
+        } catch (e) { 
+            alert("Evaluation sync error."); 
+        } finally { 
+            setEvaluating(false); 
+        }
     }, [user.name, domains, sessionId, type]);
 
-    // NEW: Wrapped in useCallback to solve warning
     const handleNext = useCallback((autoAnswer = null) => {
-        clearInterval(timerRef.current);
         const finalAnswer = autoAnswer || currentInput || "No response provided";
-        const updatedAnswers = [...answers, { challenge: questions[currentStep].challenge, answer: finalAnswer }];
+        const updatedAnswers = [...answers, { challenge: questions[currentStep]?.challenge, answer: finalAnswer }];
+        
         setAnswers(updatedAnswers);
         setCurrentInput("");
 
         if (currentStep < questions.length - 1) {
             setCurrentStep(prev => prev + 1);
+            setTimeLeft(30); // Reset timer for the next question only here
         } else {
+            clearInterval(timerRef.current);
             submitBatch(updatedAnswers);
         }
     }, [answers, questions, currentStep, currentInput, submitBatch]);
 
-    // UPDATED: Added handleNext and isTimed to dependencies
+    // Timer Interval Logic
     useEffect(() => {
-        if (isTimed && !loading && !evaluating && !results && currentStep < questions.length) {
-            setTimeLeft(30);
+        if (isTimed && !loading && !evaluating && !results && questions.length > 0) {
             timerRef.current = setInterval(() => {
-                setTimeLeft(prev => {
+                setTimeLeft((prev) => {
                     if (prev <= 1) {
-                        clearInterval(timerRef.current);
-                        handleNext("No response provided");
-                        return 0;
+                        handleNext("Time Expired");
+                        return 30;
                     }
                     return prev - 1;
                 });
             }, 1000);
         }
         return () => clearInterval(timerRef.current);
-    }, [loading, evaluating, results, currentStep, questions.length, handleNext, isTimed]);
+    }, [loading, evaluating, results, questions.length, isTimed, handleNext]); 
+    // handleNext is stabilized by useCallback, currentStep is handled inside handleNext
 
     const overallAccuracy = useMemo(() => {
         if (!results) return 0;
@@ -405,16 +413,19 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
         return Math.round((total / (questions.length * 10)) * 100);
     }, [results, questions.length]);
 
-    // ... (Keep the rest of the return JSX exactly as you have it)
-    if (loading) return <div className="text-center py-5"><Loader2 className="spinner-border text-primary mb-3" /><p className="fw-bold opacity-50">SYNCING NEURAL LINK...</p></div>;
+    if (loading) return (
+        <div className="text-center py-5">
+            <Loader2 className="spinner-border text-primary mb-3" />
+            <p className="fw-bold opacity-50 uppercase tracking-widest">Synchronizing Neural Link...</p>
+        </div>
+    );
 
     return (
         <div className="mx-auto" style={{ maxWidth: '850px' }}>
             <div className="p-5" style={glassStyle}>
-                {/* ... (rest of your component code) */}
                 <div className="d-flex justify-content-between mb-4 align-items-center">
                     <span className="text-primary fw-bold small tracking-widest uppercase">
-                        {results ? "Protocol Summary" : `${type.toUpperCase()} - Q ${currentStep + 1}/${limit}`}
+                        {results ? "Protocol Summary" : `${type.toUpperCase()} - Q ${currentStep + 1}/${questions.length}`}
                     </span>
                     <div className="d-flex align-items-center gap-3">
                         {isTimed && !results && !evaluating && (
@@ -433,23 +444,28 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
                 )}
 
                 {evaluating ? (
-                    <div className="text-center py-5"><Loader2 className="spinner-border text-primary mb-3" /><p className="fw-bold opacity-50">ANALYZING RESPONSES...</p></div>
+                    <div className="text-center py-5">
+                        <Loader2 className="spinner-border text-primary mb-3" />
+                        <p className="fw-bold opacity-50">ANALYZING RESPONSES...</p>
+                    </div>
                 ) : results ? (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                         <div className="text-center mb-5">
                             <h6 className="text-primary fw-bold tracking-widest uppercase mb-4">Neural Evaluation Complete</h6>
                             <h1 className="display-1 fw-black mb-3 text-gradient">{overallAccuracy}%</h1>
-                            <p className="fs-5 opacity-50">Overall accuracy across {limit} challenges.</p>
+                            <p className="fs-5 opacity-50">Overall accuracy across {questions.length} challenges.</p>
                         </div>
                         <div className="mb-5">
                             {results.map((res, i) => (
                                 <div key={i} className="p-4 mb-3 rounded-4" style={{background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)'}}>
                                     <div className="d-flex justify-content-between align-items-start mb-2">
-                                        <h6 className="fw-bold text-primary mb-0">CHALLENGE {i+1}</h6>
-                                        <span className={`fw-bold ${res.score === 0 ? 'text-danger' : 'text-success'}`}>{res.score * 10}%</span>
+                                        <h6 className="fw-bold text-primary mb-0 uppercase small">Challenge {i+1}</h6>
+                                        <span className={`fw-bold ${res.score < 5 ? 'text-danger' : 'text-success'}`}>{res.score * 10}%</span>
                                     </div>
-                                    <p className="small mb-2 fw-bold">Q: {questions[i]?.challenge.split('Question:')[1] || questions[i]?.challenge}</p>
-                                    <p className="small opacity-50 mb-0 italic">Feedback: {res.feedback}</p>
+                                    <p className="small mb-2 fw-bold opacity-90">{questions[i]?.challenge}</p>
+                                    <div className="p-2 rounded-2" style={{background: 'rgba(0,0,0,0.2)'}}>
+                                        <p className="small opacity-50 mb-0 italic">Feedback: {res.feedback}</p>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -458,22 +474,46 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
                 ) : (
                     <>
                         <div className="mb-5">
-                            {questions[currentStep]?.challenge.split('Question:').map((text, i) => (
-                                <div key={i} className={i === 0 ? "scenario-text" : "challenge-text h2"}>{text}{i === 0 ? "" : "?"}</div>
-                            ))}
+                            {/* Improved split logic with fallback */}
+                            {questions[currentStep]?.challenge && questions[currentStep].challenge.includes('Question:') ? (
+                                questions[currentStep].challenge.split('Question:').map((text, i) => (
+                                    <div key={i} className={i === 0 ? "scenario-text mb-2" : "challenge-text h2"}>
+                                        {text}{i !== 0 && questions[currentStep].challenge.endsWith('?') ? '' : ''}
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="challenge-text h2">{questions[currentStep]?.challenge || "Loading Challenge..."}</div>
+                            )}
                         </div>
+
                         {questions[currentStep]?.options ? (
                             <div className="row g-3 mb-5">
                                 {questions[currentStep].options.map(o => (
                                     <div className="col-md-6" key={o}>
-                                        <button className={`btn w-100 py-3 rounded-4 fw-bold transition-all ${currentInput === o ? 'btn-primary shadow-lg' : 'btn-outline-light opacity-50'}`} onClick={() => setCurrentInput(o)}>{o}</button>
+                                        <button 
+                                            className={`btn w-100 py-3 rounded-4 fw-bold text-start px-4 transition-all ${currentInput === o ? 'btn-primary shadow-lg scale-105' : 'btn-outline-light opacity-50 hover-opacity-100'}`} 
+                                            onClick={() => setCurrentInput(o)}
+                                        >
+                                            {o}
+                                        </button>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <textarea className="custom-input mb-5 challenge-text" style={{ fontSize: '1.1rem', fontWeight: '400' }} rows="4" value={currentInput} onChange={e => setCurrentInput(e.target.value)} placeholder="Type your detailed reasoning here..."/>
+                            <textarea 
+                                className="custom-input mb-5" 
+                                style={{ fontSize: '1.1rem', minHeight: '150px' }} 
+                                value={currentInput} 
+                                onChange={e => setCurrentInput(e.target.value)} 
+                                placeholder="Type your neural response here..."
+                            />
                         )}
-                        <button className="btn btn-primary w-100 py-3 fw-bold rounded-4 shadow-lg" onClick={() => handleNext()} disabled={!currentInput && type !== 'adaptive'}>
+
+                        <button 
+                            className="btn btn-primary w-100 py-3 fw-bold rounded-4 shadow-lg" 
+                            onClick={() => handleNext()} 
+                            disabled={!currentInput && type !== 'adaptive'}
+                        >
                             {currentStep === questions.length - 1 ? "FINISH ASSESSMENT" : "NEXT CHALLENGE"}
                         </button>
                     </>
@@ -482,6 +522,7 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
         </div>
     );
 };
+
 
 const ReportsView = ({ user, history, loading }) => {
     const [expandedSession, setExpandedSession] = useState(null);

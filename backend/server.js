@@ -4,71 +4,145 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-mongoose.connect(process.env.MONGO_URI).then(() => console.log("✅ MongoDB Connected"));
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("✅ MongoDB Connected Successfully"))
+    .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
+// Database Schemas
 const User = mongoose.model("User", new mongoose.Schema({
-    username: String, email: { type: String, unique: true }, password: { type: String }, level: { type: String, default: "Beginner" }
+    username: String, 
+    email: { type: String, unique: true }, 
+    password: { type: String }, 
+    level: { type: String, default: "Beginner" }
 }));
 
 const Assessment = mongoose.model("Assessment", new mongoose.Schema({
-    username: String, domain: String, score: Number, feedback: String, challenge: String, answer: String, sessionId: String, type: String, timestamp: { type: Date, default: Date.now }
+    username: String, 
+    domain: String, 
+    score: Number, 
+    feedback: String, 
+    challenge: String, 
+    answer: String, 
+    sessionId: String, 
+    type: String, 
+    timestamp: { type: Date, default: Date.now }
 }));
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+/**
+ * AI Helper: Calls GitHub Marketplace Models
+ * Model: gpt-4o-mini (Best for rate limits and JSON accuracy)
+ */
+const callGitHubAI = async (prompt) => {
+    try {
+        const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`
+            },
+            body: JSON.stringify({
+                messages: [
+                    { role: "system", content: "You are an AI assessment engine. You must ONLY output valid JSON. Do not include markdown formatting or extra text." },
+                    { role: "user", content: prompt }
+                ],
+                model: "gpt-4o-mini",
+                temperature: 0.7
+            })
+        });
 
+        const result = await response.json();
+
+        if (!response.ok) {
+            console.error("--- GITHUB API ERROR ---");
+            console.error("Status:", response.status);
+            console.error("Details:", JSON.stringify(result, null, 2));
+            throw new Error(`GitHub API Error: ${response.status}`);
+        }
+
+        return result.choices[0].message.content;
+    } catch (error) {
+        console.error("AI Fetch Failure:", error.message);
+        throw error;
+    }
+};
+
+/**
+ * Helper: Extracts JSON from AI string response
+ */
 const cleanJSON = (text) => {
     try {
         const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
         return match ? JSON.parse(match[0]) : null;
-    } catch (e) { return null; }
+    } catch (e) { 
+        console.error("JSON Parse Error on text:", text);
+        return null; 
+    }
 };
+
+// --- AUTHENTICATION ROUTES ---
 
 app.post("/register", async (req, res) => {
     try {
         const hashedPassword = await bcrypt.hash(req.body.password, 10);
         await new User({ ...req.body, password: hashedPassword }).save();
         res.status(201).json({ success: true });
-    } catch (e) { res.status(400).json({ error: "Email exists" }); }
+    } catch (e) { 
+        res.status(400).json({ error: "Email already exists in neural database" }); 
+    }
 });
 
 app.post("/login", async (req, res) => {
-    const user = await User.findOne({ email: req.body.email });
-    if (user && await bcrypt.compare(req.body.password, user.password)) {
-        const token = jwt.sign({ id: user._id }, "NEXA_SECRET");
-        res.json({ token, user: { name: user.username, level: user.level } });
-    } else res.status(401).json({ error: "Invalid Credentials" });
+    try {
+        const user = await User.findOne({ email: req.body.email });
+        if (user && await bcrypt.compare(req.body.password, user.password)) {
+            const token = jwt.sign({ id: user._id }, "NEXA_SECRET");
+            res.json({ token, user: { name: user.username, level: user.level } });
+        } else {
+            res.status(401).json({ error: "Access Denied: Invalid Credentials" });
+        }
+    } catch (e) {
+        res.status(500).json({ error: "Auth Server Error" });
+    }
 });
+
+// --- ASSESSMENT ROUTES ---
 
 app.post("/generate-assessment", async (req, res) => {
     const { type, domains, limit } = req.body;
-    const domainStr = domains?.length > 0 ? domains.join(", ") : "General";
+    const domainStr = domains?.length > 0 ? domains.join(", ") : "General Knowledge";
     const count = limit || 3;
     
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        console.log(`📡 Requesting ${count} ${type} questions for ${domainStr}...`);
+
         let prompt = "";
-        
         if (type === 'adaptive') {
             prompt = `Generate ${count} unique, short scenario-based logic questions about ${domainStr}. 
-            Format each as: Scenario: [Context] Question: [Question]? 
-            JSON format: {"questions": [{"challenge": "..."}]}`;
+            Format exactly like this: Scenario: [The situation description] Question: [The specific question].
+            Return valid JSON only: {"questions": [{"challenge": "Scenario: ... Question: ..."}]}`;
         } else {
             prompt = `Generate ${count} unique multiple choice questions about ${domainStr}. 
-            JSON format: {"questions": [{"challenge": "...", "options": ["A", "B", "C", "D"]}]}`;
+            Return valid JSON only: {"questions": [{"challenge": "The question here?", "options": ["Choice A", "Choice B", "Choice C", "Choice D"]}]}`;
         }
 
-        const result = await model.generateContent(prompt);
-        const data = cleanJSON(result.response.text());
-        res.json(data || { questions: [] });
+        const aiResponse = await callGitHubAI(prompt);
+        const data = cleanJSON(aiResponse);
+
+        if (!data || !data.questions) {
+            throw new Error("AI failed to provide questions in the correct format.");
+        }
+
+        res.json(data);
     } catch (e) {
-        res.status(500).json({ error: "AI Error" });
+        console.error("Route Error (/generate-assessment):", e.message);
+        res.status(500).json({ error: "AI Generation Failed. Check Server Logs." });
     }
 });
 
@@ -76,20 +150,23 @@ app.post("/evaluate-batch", async (req, res) => {
     const { username, answers, domains, sessionId, type } = req.body;
     
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-        const evalPrompt = `Evaluate these ${answers.length} answers for an assessment. 
-        Input: ${JSON.stringify(answers)}. 
-        For each, provide a score (0-10) and brief feedback. 
-        JSON ONLY: {"results": [{"score": 0-10, "feedback": "..."}]}`;
+        console.log(`🧠 Evaluating batch responses for ${username}...`);
 
-        const result = await model.generateContent(evalPrompt);
-        const data = cleanJSON(result.response.text());
+        const evalPrompt = `Evaluate these ${answers.length} answers for an assessment about ${domains?.join(", ") || 'General'}. 
+        Input Answers: ${JSON.stringify(answers)}. 
+        For each answer, provide a score from 0 to 10 and constructive feedback. 
+        JSON ONLY: {"results": [{"score": 0-10, "feedback": "Brief feedback text"}]}`;
 
-        // Save each to DB for history
+        const aiResponse = await callGitHubAI(evalPrompt);
+        const data = cleanJSON(aiResponse);
+
+        if (!data || !data.results) throw new Error("Evaluation parsing failed.");
+
+        // Save each result to DB for User History
         const savePromises = data.results.map((resItem, idx) => {
             return new Assessment({
                 username, 
-                domain: domains?.join(", "), 
+                domain: domains?.join(", ") || "General", 
                 challenge: answers[idx].challenge, 
                 answer: answers[idx].answer, 
                 sessionId, 
@@ -102,12 +179,22 @@ app.post("/evaluate-batch", async (req, res) => {
         await Promise.all(savePromises);
         res.json(data);
     } catch (e) {
+        console.error("Route Error (/evaluate-batch):", e.message);
         res.status(500).json({ error: "Batch Evaluation Failed" });
     }
 });
 
+// --- DATA ROUTES ---
+
 app.get("/history/:username", async (req, res) => {
-    res.json(await Assessment.find({ username: req.params.username }).sort({ timestamp: -1 }));
+    try {
+        const results = await Assessment.find({ username: req.params.username }).sort({ timestamp: -1 });
+        res.json(results);
+    } catch (e) {
+        res.status(500).json({ error: "Failed to retrieve history" });
+    }
 });
 
-app.listen(5000, () => console.log("🚀 Server running on port 5000"));
+// Server Initialization
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 IntelliTest Server Core active on port ${PORT}`));
