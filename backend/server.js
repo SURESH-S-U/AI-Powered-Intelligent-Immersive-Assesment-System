@@ -30,6 +30,7 @@ const Assessment = mongoose.model("Assessment", new mongoose.Schema({
     answer: String, 
     sessionId: String, 
     type: String, 
+    difficulty: { type: String, default: "Beginner" },
     timestamp: { type: Date, default: Date.now }
 }));
 
@@ -47,7 +48,7 @@ const callGitHubAI = async (prompt) => {
                     { role: "user", content: prompt }
                 ],
                 model: "gpt-4o-mini",
-                temperature: 0.9 
+                temperature: 0.7 
             })
         });
 
@@ -84,25 +85,26 @@ app.post("/login", async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Server Error" }); }
 });
 
-// Replace the app.post("/generate-assessment") block in server.js
 app.post("/generate-assessment", async (req, res) => {
-    const { type, domains, limit, level } = req.body;
+    const { type, domains, limit, difficulty } = req.body;
     const isMCQ = (type === 'multi' || type === 'general');
     
     let topicDescription = domains.join(", ");
-    if (type === 'general') topicDescription = "random high-level trivia, science, and history (exclude domain specific items)";
+    if (type === 'general') topicDescription = "random high-level trivia, science, and history";
 
     const count = limit || 3;
     const seed = Date.now(); 
 
     try {
         let prompt = `Generate ${count} ${isMCQ ? 'Multiple Choice' : 'Scenario-based'} questions. 
-        Topic: ${topicDescription}. User Proficiency: ${level}. Seed: ${seed}.
+        Topic: ${topicDescription}. 
+        Difficulty Level: ${difficulty}. 
+        Seed: ${seed}.
         
         RULES:
-        1. Keep questions short and effective.
-        2. If type is 'general' or 'multi', you MUST provide exactly 4 distinct options.Dont give options like "all of the above".
-        3. If type is 'adaptive', provide a scenario text and a clear question, Dont give MCQ like Questions.
+        1. Keep questions VERY SHORT (max 15-20 words) so they can be read quickly within a 30s timer.
+        2. If type is 'general' or 'multi', you MUST provide exactly 4 distinct options.
+        3. Match the question complexity strictly to the '${difficulty}' level.
         4. Output format: JSON ONLY.
         
         JSON Format: 
@@ -114,12 +116,10 @@ app.post("/generate-assessment", async (req, res) => {
     } catch (e) { res.status(500).json({ error: "AI Generation Error" }); }
 });
 
-
 app.post("/evaluate-batch", async (req, res) => {
-    const { username, answers, domains, sessionId, type } = req.body;
+    const { username, answers, domains, sessionId, type, difficulty } = req.body;
     try {
-        const evalPrompt = `Evaluate these answers for a ${type} assessment.
-        Logic: For 'multi' or 'general' types, score 10 for correct, 0 for incorrect. For 'adaptive', use a scale of 0-10 based on reasoning quality.
+        const evalPrompt = `Evaluate these answers for a ${type} assessment at ${difficulty} level.
         Data: ${JSON.stringify(answers)}.
         JSON Format: {"results": [{"score": 0-10, "feedback": "Brief description"}]}`;
 
@@ -132,7 +132,7 @@ app.post("/evaluate-batch", async (req, res) => {
                 domain: (type === 'general' ? "General Knowledge" : domains.join(", ")), 
                 challenge: answers[idx].challenge, 
                 answer: answers[idx].answer, 
-                sessionId, type, 
+                sessionId, type, difficulty,
                 score: resItem.score, 
                 feedback: resItem.feedback 
             }).save();
