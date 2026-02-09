@@ -236,7 +236,7 @@ const DashboardView = ({ user, setTab, history }) => {
                             Ready to assess your Skills? Our AI core is synchronized and waiting for your domain parameters.
                         </p>
                         <p className="opacity-40 mb-4 small">Maximize your performance metrics by selecting highly specific focus domains.</p>
-                        <button className="btn btn-primary btn-lg rounded-pill px-5 fw-bold mt-2" onClick={() => setTab('assessments')}>
+                        <button className="btn btn-primary btn-lg rounded-pill px-5 fw-bold mt-5" onClick={() => setTab('assessments')}>
                             Start Assessment <ArrowRight size={18} className="ms-2"/>
                         </button>
                     </div>

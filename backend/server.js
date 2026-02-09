@@ -101,7 +101,7 @@ app.post("/generate-assessment", async (req, res) => {
         
         RULES:
         1. Keep questions short and effective.
-        2. If type is 'general' or 'multi', you MUST provide exactly 4 distinct options.
+        2. If type is 'general' or 'multi', you MUST provide exactly 4 distinct options.Dont give options like "all of the above".
         3. If type is 'adaptive', provide a scenario text and a clear question, Dont give MCQ like Questions.
         4. Output format: JSON ONLY.
         
