@@ -175,11 +175,10 @@ const DashboardView = ({ user, setTab, history }) => {
         let rating = "C";
         let level = "Beginner";
         
-        if (avgAccuracy >= 90) { rating = "S"; level = "Elite Expert"; }
-        else if (avgAccuracy >= 80) { rating = "A+"; level = "Advanced"; }
-        else if (avgAccuracy >= 70) { rating = "A"; level = "Skilled"; }
-        else if (avgAccuracy >= 50) { rating = "B"; level = "Intermediate"; }
-        else { rating = "C"; level = "Novice"; }
+        // Thresholds: Beginner (<40), Intermediate (40-70), Advanced (>70)
+        if (avgAccuracy > 70) { rating = "A"; level = "Advanced"; }
+        else if (avgAccuracy >= 40) { rating = "B"; level = "Intermediate"; }
+        else { rating = "C"; level = "Beginner"; }
         
         return { accuracy: `${avgAccuracy}%`, syncs: uniqueSessions, rating, level };
     }, [history]);
@@ -233,10 +232,11 @@ const DashboardView = ({ user, setTab, history }) => {
                 <div className="col-md-8">
                     <div className="p-5 rounded-5" style={{ height: '320px', background: 'linear-gradient(135deg, rgba(59,130,246,0.15), transparent)', border: '1px solid rgba(59,130,246,0.2)' }}>
                         <h2 className="fw-black mb-3">Initialize Neural Assessment</h2>
-                        <p className="opacity-60" style={{ lineHeight: '1.8', fontSize: '0.95rem' }}>
-                            Ready to assess your Skills? Our AI core is synchronized and waiting for your domain parameters. Select the assesment type and timer for efficient utilization of the Intellignet AI-Powered Assesment System.
+                        <p className="opacity-60 mb-1" style={{ lineHeight: '1.6', fontSize: '0.95rem' }}>
+                            Ready to assess your Skills? Our AI core is synchronized and waiting for your domain parameters.
                         </p>
-                        <button className="btn btn-primary btn-lg rounded-pill px-5 fw-bold mt-4" onClick={() => setTab('assessments')}>
+                        <p className="opacity-40 mb-4 small">Maximize your performance metrics by selecting highly specific focus domains.</p>
+                        <button className="btn btn-primary btn-lg rounded-pill px-5 fw-bold mt-2" onClick={() => setTab('assessments')}>
                             Start Assessment <ArrowRight size={18} className="ms-2"/>
                         </button>
                     </div>
@@ -448,6 +448,9 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
         </div>
     );
 
+    // FIXED: Ensure currentChallenge is always a string to prevent .includes crash
+    const currentChallenge = questions[currentStep]?.challenge || "";
+
     return (
         <div className="mx-auto" style={{ maxWidth: '850px' }}>
             <div className="p-5" style={glassStyle}>
@@ -504,18 +507,19 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, onEnd }) => {
                 ) : (
                     <>
                         <div className="mb-5">
-                            {questions[currentStep]?.challenge && questions[currentStep].challenge.includes('Question:') ? (
-                                questions[currentStep].challenge.split('Question:').map((text, i) => (
+                            {typeof currentChallenge === 'string' && currentChallenge.includes('Question:') ? (
+                                currentChallenge.split('Question:').map((text, i) => (
                                     <div key={i} className={i === 0 ? "scenario-text mb-2" : "challenge-text h2"}>
                                         {text}
                                     </div>
                                 ))
                             ) : (
-                                <div className="challenge-text h2">{questions[currentStep]?.challenge || "Loading Challenge..."}</div>
+                                <div className="challenge-text h2">{currentChallenge || "Loading Challenge..."}</div>
                             )}
                         </div>
 
-                        {questions[currentStep]?.options ? (
+                        {/* Updated logic: Adaptive uses textarea, General/Multi use buttons */}
+                        {(type === 'multi' || type === 'general') && questions[currentStep]?.options ? (
                             <div className="row g-3 mb-5">
                                 {questions[currentStep].options.map(o => (
                                     <div className="col-md-6" key={o}>

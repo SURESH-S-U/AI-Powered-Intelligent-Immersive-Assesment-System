@@ -11,8 +11,8 @@ app.use(cors());
 app.use(express.json());
 
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ MongoDB Connected"))
-    .catch((err) => console.error("❌ MongoDB Error:", err));
+    .then(() => console.log("✅ MongoDB Connected Successfully"))
+    .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 const User = mongoose.model("User", new mongoose.Schema({
     username: String, 
@@ -43,16 +43,20 @@ const callGitHubAI = async (prompt) => {
             },
             body: JSON.stringify({
                 messages: [
-                    { role: "system", content: "You are an expert assessment engine. Output ONLY valid JSON. Avoid common questions; use unique, deep-thinking scenarios." },
+                    { role: "system", content: "You are an advanced AI assessment engine. You must ONLY output valid JSON. Ensure 'challenge' is ALWAYS a string." },
                     { role: "user", content: prompt }
                 ],
                 model: "gpt-4o-mini",
-                temperature: 0.9 // High randomness to prevent repetition
+                temperature: 0.9 
             })
         });
+
         const result = await response.json();
         return result.choices[0].message.content;
-    } catch (error) { throw error; }
+    } catch (error) {
+        console.error("AI Fetch Failure:", error.message);
+        throw error;
+    }
 };
 
 const cleanJSON = (text) => {
@@ -74,44 +78,50 @@ app.post("/login", async (req, res) => {
     try {
         const user = await User.findOne({ email: req.body.email });
         if (user && await bcrypt.compare(req.body.password, user.password)) {
-            const token = jwt.sign({ id: user._id }, "SECRET");
+            const token = jwt.sign({ id: user._id }, "NEXA_SECRET");
             res.json({ token, user: { name: user.username, level: user.level } });
         } else { res.status(401).json({ error: "Invalid Credentials" }); }
-    } catch (e) { res.status(500).json({ error: "Auth Error" }); }
+    } catch (e) { res.status(500).json({ error: "Server Error" }); }
 });
 
+// Replace the app.post("/generate-assessment") block in server.js
 app.post("/generate-assessment", async (req, res) => {
     const { type, domains, limit, level } = req.body;
-    const isGeneral = type === 'general';
+    const isMCQ = (type === 'multi' || type === 'general');
     
-    // Meta-Question logic: Randomize sub-topics to prevent repetition
-    const metaTopics = ["obscure history", "theoretical physics", "modern ethics", "space exploration", "rare biology", "lost civilizations"];
-    const randomMeta = metaTopics[Math.floor(Math.random() * metaTopics.length)];
-    
-    const domainStr = isGeneral ? `a mix of ${randomMeta} and general logic` : domains.join(", ");
+    let topicDescription = domains.join(", ");
+    if (type === 'general') topicDescription = "random high-level trivia, science, and history (exclude domain specific items)";
+
     const count = limit || 3;
+    const seed = Date.now(); 
 
     try {
-        let prompt = `Generate ${count} unique questions. Topic: ${domainStr}. Level: ${level}. 
-        Type: ${type === 'adaptive' ? 'Scenario-based logic' : 'Multiple Choice'}.
-        Seed: ${Date.now()}. 
-        Constraint: MUST be non-repetitive. Use high-level vocabulary.
-        Format: {"questions": [{"challenge": "string", "options": ["only if MCQ"]}]}`;
+        let prompt = `Generate ${count} ${isMCQ ? 'Multiple Choice' : 'Scenario-based'} questions. 
+        Topic: ${topicDescription}. User Proficiency: ${level}. Seed: ${seed}.
+        
+        RULES:
+        1. Keep questions short and effective.
+        2. If type is 'general' or 'multi', you MUST provide exactly 4 distinct options.
+        3. If type is 'adaptive', provide a scenario text and a clear question, Dont give MCQ like Questions.
+        4. Output format: JSON ONLY.
+        
+        JSON Format: 
+        {"questions": [{"challenge": "${!isMCQ ? 'Scenario: [text] Question: [text]' : '[Question text]'} ", "options": ${isMCQ ? '["A", "B", "C", "D"]' : 'null'}}]}`;
 
         const aiResponse = await callGitHubAI(prompt);
         const data = cleanJSON(aiResponse);
         res.json(data);
-    } catch (e) { res.status(500).json({ error: "Generation Failed" }); }
+    } catch (e) { res.status(500).json({ error: "AI Generation Error" }); }
 });
+
 
 app.post("/evaluate-batch", async (req, res) => {
     const { username, answers, domains, sessionId, type } = req.body;
     try {
-        const evalPrompt = `Evaluate these answers for ${type} assessment. 
-        Context: ${domains?.join(", ") || 'General'}.
-        Scoring: For MCQ/General, give exactly 10 for correct, 0 for incorrect. For Adaptive, give 0-10 based on depth.
-        Answers: ${JSON.stringify(answers)}.
-        Format: {"results": [{"score": 0-10, "feedback": "string"}]}`;
+        const evalPrompt = `Evaluate these answers for a ${type} assessment.
+        Logic: For 'multi' or 'general' types, score 10 for correct, 0 for incorrect. For 'adaptive', use a scale of 0-10 based on reasoning quality.
+        Data: ${JSON.stringify(answers)}.
+        JSON Format: {"results": [{"score": 0-10, "feedback": "Brief description"}]}`;
 
         const aiResponse = await callGitHubAI(evalPrompt);
         const data = cleanJSON(aiResponse);
@@ -119,22 +129,25 @@ app.post("/evaluate-batch", async (req, res) => {
         const savePromises = data.results.map((resItem, idx) => {
             return new Assessment({
                 username, 
-                domain: domains?.join(", ") || "General Knowledge", 
+                domain: (type === 'general' ? "General Knowledge" : domains.join(", ")), 
                 challenge: answers[idx].challenge, 
                 answer: answers[idx].answer, 
-                sessionId, type, score: resItem.score, feedback: resItem.feedback 
+                sessionId, type, 
+                score: resItem.score, 
+                feedback: resItem.feedback 
             }).save();
         });
         await Promise.all(savePromises);
         res.json(data);
-    } catch (e) { res.status(500).json({ error: "Eval Failed" }); }
+    } catch (e) { res.status(500).json({ error: "Eval Error" }); }
 });
 
 app.get("/history/:username", async (req, res) => {
     try {
         const results = await Assessment.find({ username: req.params.username }).sort({ timestamp: -1 });
         res.json(results);
-    } catch (e) { res.status(500).json({ error: "History retrieval failed" }); }
+    } catch (e) { res.status(500).json({ error: "History Error" }); }
 });
 
-app.listen(5000, () => console.log("🚀 Server running on port 5000"));
+const PORT = 5000;
+app.listen(PORT, () => console.log(`🚀 Server active on ${PORT}`));
