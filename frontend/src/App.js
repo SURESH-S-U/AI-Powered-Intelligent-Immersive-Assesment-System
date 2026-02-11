@@ -478,12 +478,25 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd 
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                         <div className="text-center mb-5">
                             <h6 className="text-primary fw-bold tracking-widest uppercase mb-4">Neural Evaluation Complete</h6>
-                            <h1 className="display-1 fw-black mb-3 text-gradient">{Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / (questions.length * 10)) * 100)}%</h1>
+                            <h1 className="display-1 fw-black mb-3 text-gradient">
+                                {(type === 'multi' || type === 'general') 
+                                    ? `${results.filter(r => r.score >= 8).length} / ${questions.length} Correct` 
+                                    : `${Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / (questions.length * 10)) * 100)}%`
+                                }
+                            </h1>
                             <p className="fs-5 opacity-50">Evaluation summary for {difficulty} level.</p>
                         </div>
                         <div className="mb-5">{results.map((res, i) => (
                             <div key={i} className="p-4 mb-3 rounded-4" style={{background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)'}}>
-                                <div className="d-flex flex-column flex-md-row justify-content-between mb-2 small fw-bold"><span className="text-primary">CHALLENGE {i+1}</span><span className={res.score >= 8 ? 'text-success' : 'text-danger'}>{res.score * 10}% Accuracy</span></div>
+                                <div className="d-flex flex-column flex-md-row justify-content-between mb-2 small fw-bold">
+                                    <span className="text-primary">CHALLENGE {i+1}</span>
+                                    <span className={res.score >= 8 ? 'text-success' : 'text-danger'}>
+                                        {(type === 'multi' || type === 'general') 
+                                            ? (res.score >= 8 ? 'CORRECT' : 'INCORRECT') 
+                                            : `${res.score * 10}% Accuracy`
+                                        }
+                                    </span>
+                                </div>
                                 <p className="small mb-0 opacity-70 italic">Feedback: {res.feedback}</p>
                             </div>
                         ))}</div>
