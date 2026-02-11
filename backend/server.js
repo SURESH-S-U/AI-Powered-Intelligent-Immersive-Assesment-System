@@ -7,7 +7,21 @@ const jwt = require("jsonwebtoken");
 
 dotenv.config();
 const app = express();
-app.use(cors());
+
+// Frontend
+app.use(
+  cors({
+    origin: [
+      process.env.FRONTEND_URL,
+      "http://localhost:3000"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  })
+);
+
+
 app.use(express.json());
 
 mongoose.connect(process.env.MONGO_URI)

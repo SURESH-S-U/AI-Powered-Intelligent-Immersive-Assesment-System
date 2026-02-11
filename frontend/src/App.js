@@ -8,7 +8,11 @@ import {
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const glassStyle = { background: 'rgba(255, 255, 255, 0.02)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '24px' };
-const API_URL = "http://localhost:5000";
+
+
+// Backend API URL
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 
 // --- COMPONENT: DIFFICULTY CIRCLE (LeetCode Style) ---
 const DifficultyCircle = ({ stats }) => {
