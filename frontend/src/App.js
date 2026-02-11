@@ -198,7 +198,7 @@ const AuthPage = ({ onAuth }) => {
                     {isRegister && <div className="input-field"><UserIcon size={18} className="input-icon" /><input type="text" placeholder="Full Name" onChange={e => setFormData({ ...formData, username: e.target.value })} required /></div>}
                     <div className="input-field"><Mail size={18} className="input-icon" /><input type="email" placeholder="Email ID" onChange={e => setFormData({ ...formData, email: e.target.value })} required /></div>
                     <div className="input-field"><Lock size={18} className="input-icon" /><input type="password" placeholder="Secure Passkey" onChange={e => setFormData({ ...formData, password: e.target.value })} required /></div>
-                    <button className="auth-btn" disabled={loading}>{loading ? <Loader2 className="spinner-border spinner-border-sm" /> : <>{isRegister ? "CREATE PROFILE" : "Lets Start"}<ArrowRight size={18} className="ms-2" /></>}</button>
+                    <button className="auth-btn" disabled={loading}>{loading ? <Loader2 className="spinner-border spinner-border-sm" /> : <>{isRegister ? "Create Profile" : "Lets Start"}<ArrowRight size={18} className="ms-2" /></>}</button>
                 </form>
                 <div className="auth-footer"><span>{isRegister ? "Already have a profile?" : "New subject identifier?"}</span><button className="switch-mode-btn" onClick={() => setIsRegister(!isRegister)}>{isRegister ? "Login to Link" : "Create New Profile"}</button></div>
             </div>
@@ -222,7 +222,9 @@ const AuthPage = ({ onAuth }) => {
             `}</style>
         </div>
     );
-};
+};  
+
+
 
 const DashboardView = ({ user, setTab, history }) => {
     const gradientTextStyle = { background: 'linear-gradient(135deg, #60a5fa 0%, #a855f7 50%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundSize: '200% auto', display: 'inline-block' };
@@ -293,9 +295,10 @@ const DashboardView = ({ user, setTab, history }) => {
                     <p className="opacity-60 mb-1" style={{ lineHeight: '1.8', fontSize: '0.95rem' }}>Ready to assess your Skills? Our AI core is synchronized and waiting for parameters. Select Your domain and set difficulty and timer for efficient use of our Intelligent AI-Powered Assessment System.</p>
                     <button className="btn btn-primary btn-lg rounded-pill px-5 fw-bold mt-4 mt-md-5 w-100 w-md-auto" onClick={() => setTab('assessments')}>Start Assessment <ArrowRight size={18} className="ms-2"/></button>
                 </div></div>
-                <div className="col-lg-4"><div className="p-4 rounded-5" style={{ ...glassStyle, minHeight: '300px' }}>
-                    <h6 className="fw-bold mb-3 opacity-50 uppercase tracking-widest" style={{fontSize: '0.7rem'}}>Skill Matrix</h6>
-                    <div style={{ maxHeight: '210px', overflowY: 'auto' }}>
+                <div className="col-lg-4"><div className="p-4 rounded-5" style={{ ...glassStyle, minHeight: '350px' }}>
+                    <h6 className="fw-bold mb-4 opacity-50 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Skill Matrix</h6>
+                    <div className="hide-scrollbar" style={{ maxHeight: '210px', overflowY: 'auto', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+                        <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
                         {(skillMatrix.length > 0 ? skillMatrix : [{name: 'Waiting for Data', percent: 0}]).map((skill, idx) => (
                             <div className="mb-4" key={idx}>
                                 <div className="d-flex justify-content-between mb-2 small fw-bold"><span>{skill.name}</span><span className="text-primary">{skill.percent}%</span></div>
@@ -308,6 +311,8 @@ const DashboardView = ({ user, setTab, history }) => {
         </motion.div>
     );
 };
+
+
 
 const AssessmentCenter = ({ user, refreshHistory }) => {
     const [domains, setDomains] = useState([]);
@@ -324,10 +329,10 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
 
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div className="mb-5"><h1 className="fw-black mb-2">Assessment Center</h1><p className="opacity-50">Configure parameters, difficulty, and timing mode.</p></div>
-            <div className="p-3 p-md-5 mb-4" style={glassStyle}>
+            <div className="mb-4"><h1 className="fw-black">Assessment Center</h1><p className="opacity-50">Configure parameters, difficulty, and timing mode.</p></div>
+            <div className="p-3 p-md-4 mb-4" style={glassStyle}>
                 <div className='row mb-4'><div className="col-12"> 
-                    <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.7rem'}}>Set Knowledge Domains</h6>
+                    <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Set Knowledge Domains</h6>
                     <div className="d-flex gap-3 mb-3">
                         <input className="custom-input" placeholder="e.g. HTML, Logic..." value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && (input && (setDomains([...domains, input]), setInput("")))} />
                         <button className="btn btn-primary px-4 rounded-3" onClick={() => { if(input) { setDomains([...domains, input]); setInput(""); } }}><Plus size={24} /></button>
@@ -336,7 +341,7 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
                 </div></div>
                 <div className="row g-4 align-items-end">
                     <div className="col-12 col-md-5">
-                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.7rem'}}>Question Quantity</h6>
+                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Question Quantity</h6>
                         <div className="d-flex gap-2">
                             <select className={`custom-input ${customCount !== "" ? 'opacity-25' : ''}`} value={qCount} style={{width: '60%'}} disabled={customCount !== ""} onChange={(e) => setQCount(parseInt(e.target.value))}>
                                 {[1, 2, 3, 5, 10, 15, 20].map(n => <option key={n} value={n} style={{background: '#020617'}}>{n} Qs</option>)}
@@ -345,15 +350,15 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
                         </div>
                     </div>
                     <div className="col-12 col-md-5">
-                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.7rem'}}>Difficulty Selection</h6>
+                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Difficulty Selection</h6>
                         <select className="custom-input" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-                            <option value="Beginner" style={{background: '#020617'}}>Easy</option>
+                            <option value="Beginner" style={{background: '#020617'}}>Beginner</option>
                             <option value="Intermediate" style={{background: '#020617'}}>Intermediate</option>
                             <option value="Advanced" style={{background: '#020617'}}>Advanced</option>
                         </select>
                     </div>
                     <div className="col-12 col-md-2 text-center">
-                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest text-start text-md-center" style={{fontSize: '0.7rem'}}>Timer</h6>
+                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest text-start text-md-center" style={{fontSize: '0.9rem'}}>Timer</h6>
                         <div className={`timer-btn-toggle ${isTimed ? 'active' : ''}`} onClick={() => setIsTimed(!isTimed)}>{isTimed ? <Timer size={22}/> : <TimerOff size={22}/>}</div>
                     </div>
                 </div>
@@ -538,7 +543,7 @@ const ReportsView = ({ user, history, loading }) => {
                                 <div key={s.id} className="p-3 p-md-4 mb-3 rounded-4" style={glassStyle}>
                                     <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-4 gap-3">
                                         <div onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)} style={{ cursor: 'pointer' }}>
-                                            <h2 className="fw-black mb-0 tracking-tight text-uppercase" style={{ fontSize: '1.4rem' }}>{s.domain || "General"}</h2>
+                                            <h2 className="fw-black mb-0 tracking-tight text-uppercase" style={{ fontSize: '1.2rem' }}>{s.domain || "General"}</h2>
                                             <div className="fw-bold text-primary" style={{ fontSize: '1rem' }}>{s.avgScore}% <span className="small opacity-50 fw-normal ms-1">Accuracy</span></div>
                                         </div>
                                         <div className="px-3 py-2 rounded-4 d-flex flex-wrap align-items-center gap-2 gap-md-3" style={metaBoxStyle}>
