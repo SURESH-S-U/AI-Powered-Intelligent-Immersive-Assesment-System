@@ -12,15 +12,17 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "https://ai-powered-intelligent-immersive-as.vercel.app", // Hardcode your Vercel URL to be safe
+      "https://ai-powered-intelligent-immersive-as.vercel.app", // NO trailing slash at the end
       "http://localhost:3000"
     ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Added OPTIONS
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
   })
 );
 
+// Add this right below the cors block to handle preflight specifically:
+app.options('*', cors());
 
 app.use(express.json());
 
