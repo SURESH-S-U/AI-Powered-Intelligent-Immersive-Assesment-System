@@ -338,7 +338,7 @@ const DashboardView = ({ user, setTab, history }) => {
                             <p className="small opacity-40 uppercase tracking-widest mb-0" style={{fontSize: '0.6rem'}}>{s.label}</p>
                         </div>
                     </div>
-                ))}
+                ))} 
                 <div className="col-12 col-md-3"><div className="p-3 p-md-4 h-100 d-flex align-items-center justify-content-center" style={glassStyle}><DifficultyCircle stats={stats.diffCounts} /></div></div>
             </div>
             {/* (Keep the rest of your original code here) */}
