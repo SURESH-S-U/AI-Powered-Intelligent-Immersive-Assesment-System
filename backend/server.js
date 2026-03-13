@@ -4,232 +4,272 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-// --- ADDED GOOGLE LIBRARY ---
 const { OAuth2Client } = require('google-auth-library');
 
 dotenv.config();
 const app = express();
-// --- INITIALIZE GOOGLE CLIENT ---
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-app.use(
-  cors({
-    origin: [
-      "https://ai-powered-intelligent-immersive-as.vercel.app",
-      "http://localhost:3000"
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true
-  })
-);
-
+app.use(cors({ 
+    origin: ["https://ai-powered-intelligent-immersive-as.vercel.app", "http://localhost:3000"], 
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], 
+    allowedHeaders: ["Content-Type", "Authorization"], 
+    credentials: true 
+}));
 app.use(express.json());
 
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ MongoDB Connected Successfully"))
-    .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+    .then(() => console.log("✅ MongoDB Connected"))
+    .catch((err) => console.error("❌ MongoDB Error:", err));
 
 // --- SCHEMAS ---
-
-const UserSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema({ 
     username: String, 
     email: { type: String, unique: true }, 
-    password: { type: String, required: false }, // --- UPDATED TO OPTIONAL FOR GOOGLE USERS ---
-    level: { type: String, default: "Beginner" },
-    googleId: { type: String }, // --- ADDED TO TRACK GOOGLE LOGINS ---
-    picture: String // --- ADDED TO STORE PROFILE IMAGE URL ---
+    password: { type: String, required: false }, 
+    level: { type: String, default: "Beginner" }, 
+    googleId: { type: String }, 
+    picture: String 
 });
 const User = mongoose.model("User", UserSchema);
 
-const AssessmentSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+const RoomSchema = new mongoose.Schema({ 
+    roomCode: { type: String, unique: true }, 
+    creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, 
+    settings: Object, 
+    questions: Array, // Stores: challenge, options, correctAnswer, explanation
+    status: { type: String, default: 'waiting' }, 
+    startTime: { type: Date }, 
+    timestamp: { type: Date, default: Date.now } 
+});
+const Room = mongoose.model("Room", RoomSchema);
+
+const AssessmentSchema = new mongoose.Schema({ 
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, 
     username: String, 
     domain: String, 
     score: Number, 
     feedback: String, 
     challenge: String, 
     answer: String, 
+    correctAnswer: String, 
     sessionId: String, 
     type: String, 
-    difficulty: { type: String, default: "Beginner" },
-    timestamp: { type: Date, default: Date.now }
+    difficulty: { type: String, default: "Beginner" }, 
+    suggestion: String, 
+    timestamp: { type: Date, default: Date.now } 
 });
 const Assessment = mongoose.model("Assessment", AssessmentSchema);
 
 // --- AI UTILS ---
-
 const callGitHubAI = async (prompt) => {
     try {
-        const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`
-            },
-            body: JSON.stringify({
+        const response = await fetch("https://models.inference.ai.azure.com/chat/completions", { 
+            method: "POST", 
+            headers: { 
+                "Content-Type": "application/json", 
+                "Authorization": `Bearer ${process.env.GITHUB_TOKEN}` 
+            }, 
+            body: JSON.stringify({ 
                 messages: [
-                    { role: "system", content: "You are an advanced AI assessment engine. You must ONLY output valid JSON." },
+                    { role: "system", content: "You are an advanced AI assessment engine. Output strictly valid JSON." }, 
                     { role: "user", content: prompt }
-                ],
-                model: "gpt-4o-mini",
+                ], 
+                model: "gpt-4o-mini", 
                 temperature: 1.0 
-            })
+            }) 
         });
         const result = await response.json();
         return result.choices[0].message.content;
     } catch (error) { throw error; }
 };
 
-const cleanJSON = (text) => {
-    try {
-        const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-        return match ? JSON.parse(match[0]) : null;
-    } catch (e) { return null; }
+const cleanJSON = (text) => { 
+    try { 
+        const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/); 
+        return match ? JSON.parse(match[0]) : null; 
+    } catch (e) { return null; } 
 };
 
 // --- ROUTES ---
 
-// --- NEW GOOGLE LOGIN ROUTE ---
 app.post("/google-login", async (req, res) => {
     const { token } = req.body;
     try {
-        const ticket = await client.verifyIdToken({
-            idToken: token,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
+        const ticket = await client.verifyIdToken({ idToken: token, audience: process.env.GOOGLE_CLIENT_ID });
         const payload = ticket.getPayload();
-        
-        // 1. Extract 'picture' from the Google payload
         const { email, name, sub, picture } = payload; 
-
         let user = await User.findOne({ email });
-
-        if (!user) {
-            user = new User({
-                username: name,
-                email: email,
-                googleId: sub,
-                level: "Beginner"
-            });
-            await user.save();
-        }
-
+        if (!user) { user = new User({ username: name, email: email, googleId: sub, level: "Beginner" }); await user.save(); }
         const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "NEXA_SECRET");
-        
-        // 2. Send the picture URL back to the frontend
-        res.json({ 
-            token: appToken, 
-            user: { 
-                id: user._id, 
-                name: user.username, 
-                level: user.level,
-                picture: picture // <--- This is the Gmail image URL
-            } 
-        });
+        res.json({ token: appToken, user: { id: user._id, name: user.username, level: user.level, picture: picture } });
     } catch (e) { res.status(400).json({ error: "Google Auth Failed" }); }
 });
 
 app.post("/register", async (req, res) => {
-    try {
-        const hashedPassword = await bcrypt.hash(req.body.password, 10);
-        const newUser = new User({ ...req.body, password: hashedPassword });
-        await newUser.save();
-        res.status(201).json({ success: true });
+    try { 
+        const hashedPassword = await bcrypt.hash(req.body.password, 10); 
+        const newUser = new User({ ...req.body, password: hashedPassword }); 
+        await newUser.save(); 
+        res.status(201).json({ success: true }); 
     } catch (e) { res.status(400).json({ error: "Email exists" }); }
 });
 
 app.post("/login", async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.body.email });
-        if (user && await bcrypt.compare(req.body.password, user.password)) {
-            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "NEXA_SECRET");
-            res.json({ 
-                token, 
-                user: { id: user._id, name: user.username, level: user.level, picture: user.picture } // --- ADDED picture TO RESPONSE ---
-            });
-        } else { res.status(401).json({ error: "Invalid Credentials" }); }
+    try { 
+        const user = await User.findOne({ email: req.body.email }); 
+        if (user && await bcrypt.compare(req.body.password, user.password)) { 
+            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "NEXA_SECRET"); 
+            res.json({ token, user: { id: user._id, name: user.username, level: user.level, picture: user.picture } }); 
+        } else { res.status(401).json({ error: "Invalid Credentials" }); } 
     } catch (e) { res.status(500).json({ error: "Server Error" }); }
 });
 
-app.post("/generate-assessment", async (req, res) => {
-    const { type, domains, limit, difficulty } = req.body;
-    const isMCQ = (type === 'multi' || type === 'general');
-    
-    const randomSeed = Math.random().toString(36).substring(7);
-    let topicDescription = (type === 'general') 
-        ? `highly diverse, random, and unpredictable general knowledge topics (Seed: ${randomSeed}).` 
-        : `a balanced mix of: ${domains.join(", ")}`;
-
+// CREATE ROOM: Added "concise" prompt for adaptive mode
+app.post("/create-room", async (req, res) => {
+    const { creatorId, roomCode, settings, studyMaterial } = req.body;
+    const { type, qCount, difficulty } = settings;
     try {
-        let prompt = "";
-
-        if (isMCQ) {
-            prompt = `Generate ${limit || 3} Multiple Choice Questions for ${topicDescription} (${difficulty}).
-            - Provide 4 options.
-            - Exactly one option MUST be the correct answer.
-            JSON format: {"questions": [{"challenge": "text", "options": ["A","B","C","D"]}]}`;
-        } else {
-            // Updated Scenario Prompt: Focus on brevity and quick reading
-            prompt = `Generate ${limit || 3} SHORT Scenario challenges for ${topicDescription} (${difficulty}).
-            Guidelines:
-            1. The scenario must be very concise (MAX 2-3 sentences).
-            2. It must be readable and answerable by a user within 30 seconds.
-            3. Do NOT use "Which of the following" or provide options.
-            4. The user will type their own answer.
-            5. Ensure a mix of topics if multiple domains are provided.
-            JSON format: {"questions": [{"challenge": "Brief scenario description..."}]}`;
+        let prompt = `Generate ${qCount} ${difficulty} questions based on: ${studyMaterial || "General Knowledge"}. 
+        Format: Return a JSON object with a "questions" array. 
+        Each question must have: "challenge", "options" (array of 4 strings), "correctAnswer", and "explanation".`;
+        
+        if (type === 'adaptive') {
+            prompt = `Generate ${qCount} situational scenarios for ${difficulty} level based on ${studyMaterial}. 
+            CRITICAL: Each scenario must be under 40 words so it can be read in 30 seconds. 
+            Format: JSON object with "questions" array. Each: {"challenge": "scenario text"}.`;
         }
 
         const aiResponse = await callGitHubAI(prompt);
-        res.json(cleanJSON(aiResponse));
-    } catch (e) { res.status(500).json({ error: "AI Generation Error" }); }
+        const data = cleanJSON(aiResponse);
+        const room = new Room({ creatorId, roomCode, settings, questions: data.questions, status: 'waiting' });
+        await room.save();
+        res.json({ success: true, room });
+    } catch (e) { res.status(500).json({ error: "Generation Error" }); }
 });
 
+app.put("/room/:code/start", async (req, res) => {
+    try { 
+        const updatedRoom = await Room.findOneAndUpdate(
+            { roomCode: req.params.code }, 
+            { status: 'in-progress', startTime: new Date() },
+            { new: true } 
+        ); 
+        res.json({ success: true, room: updatedRoom }); 
+    } catch (e) { res.status(500).json({ error: "Sync Error" }); }
+});
+
+app.get("/room/:code", async (req, res) => {
+    try { 
+        const room = await Room.findOne({ roomCode: req.params.code }); 
+        if (!room) return res.status(404).json({ error: "Not found" }); 
+        res.json(room); 
+    } catch (e) { res.status(500).json({ error: "Error" }); }
+});
+
+// INDIVIDUAL ASSESSMENT: Added "concise" prompt
+app.post("/generate-assessment", async (req, res) => {
+    const { type, domains, limit, difficulty } = req.body;
+    try {
+        let prompt = `Generate ${limit} ${difficulty} questions for ${domains.join(", ")}. JSON output.`;
+        if (type === 'adaptive') {
+            prompt = `Generate ${limit} situational scenarios for ${difficulty} level for ${domains.join(", ")}. 
+            CRITICAL: Each scenario must be under 40 words. JSON output.`;
+        }
+        const aiResponse = await callGitHubAI(prompt);
+        res.json(cleanJSON(aiResponse));
+    } catch (e) { res.status(500).json({ error: "Error" }); }
+});
+
+// EVALUATION: Improved scoping and suggestion logic
 app.post("/evaluate-batch", async (req, res) => {
     const { userId, username, answers, domains, sessionId, type, difficulty } = req.body;
-    
     try {
-        // Updated Prompt: Added strict instructions to catch gibberish/random text
-        const evalPrompt = `
-            Evaluate these user answers for the given challenges: ${JSON.stringify(answers)}. 
-            
-            Strict Guidelines:
-            1. If an answer is gibberish, random characters (e.g., "asdfgh"), or completely irrelevant to the question, you MUST give a score of 0.
-            2. For valid answers, provide a score from 0-10 and brief feedback.
-            
-            JSON Format: {"results": [{"score": 0-10, "feedback": "string"}]}
-        `;
+        let evaluatedResults = [];
+        let suggestion = "";
 
-        const aiResponse = await callGitHubAI(evalPrompt);
-        const data = cleanJSON(aiResponse);
+        if (type === 'multi' || type === 'general') {
+            evaluatedResults = answers.map(ans => {
+                const isCorrect = ans.answer?.trim() === ans.correctAnswer?.trim();
+                return {
+                    score: isCorrect ? 10 : 0,
+                    feedback: isCorrect ? "Correct answer." : `Incorrect. The correct answer was: ${ans.correctAnswer}`
+                };
+            });
+            const aiReviewPrompt = `The student answered these questions: ${JSON.stringify(answers)}. 
+            Analyze mistakes and provide a "suggestion" string with 3 study topics. Output JSON.`;
+            const aiResponse = await callGitHubAI(aiReviewPrompt);
+            const data = cleanJSON(aiResponse);
+            suggestion = data?.suggestion || "Review the fundamentals.";
+        } else {
+            const evalPrompt = `Evaluate situational responses: ${JSON.stringify(answers)}. 
+            Score each 0-10. Provide feedback and a general "suggestion" string.
+            Format: {"results": [{"score": 0, "feedback": ""}], "suggestion": "topics"}`;
+            const aiResponse = await callGitHubAI(evalPrompt);
+            const data = cleanJSON(aiResponse);
+            evaluatedResults = data.results || [];
+            suggestion = data.suggestion || "Continue practicing these scenarios.";
+        }
 
-        const savePromises = data.results.map((resItem, idx) => {
-            return new Assessment({
-                userId, 
-                username, 
-                domain: (type === 'general' ? "General Knowledge" : domains.join(", ")), 
+        const savePromises = evaluatedResults.map((resItem, idx) => {
+            return new Assessment({ 
+                userId, username, 
+                domain: domains?.join(", ") || "General", 
                 challenge: answers[idx].challenge, 
                 answer: answers[idx].answer, 
-                sessionId, type, difficulty,
+                correctAnswer: answers[idx].correctAnswer || "",
+                sessionId, type, difficulty, 
                 score: resItem.score, 
-                feedback: resItem.feedback 
+                feedback: resItem.feedback,
+                suggestion: suggestion
             }).save();
         });
+
         await Promise.all(savePromises);
-        res.json(data);
-    } catch (e) { 
-        console.error("Evaluation Error:", e);
-        res.status(500).json({ error: "Evaluation processing failed" }); 
-    }
+        res.json({ results: evaluatedResults, suggestion });
+    } catch (e) { res.status(500).json({ error: "Evaluation Error" }); }
+});
+
+// ROOM RESULTS: Fixed leaderboard privacy logic and group by userId
+app.get("/room-results/:roomCode", async (req, res) => {
+    const { roomCode } = req.params; 
+    const { userId } = req.query;
+    try {
+        const room = await Room.findOne({ roomCode });
+        if (!room) return res.status(404).json({ error: "Room not found" });
+
+        const allResults = await Assessment.find({ sessionId: roomCode });
+        const isAdmin = room.creatorId.toString() === userId;
+
+        const userStats = {};
+        allResults.forEach(r => { 
+            const uId = r.userId.toString();
+            if (!userStats[uId]) userStats[uId] = { username: r.username, score: 0, count: 0, userId: uId }; 
+            userStats[uId].score += r.score; 
+            userStats[uId].count += 1; 
+        });
+
+        const leaderboard = Object.values(userStats).map(u => ({ 
+            username: u.username, 
+            userId: u.userId, 
+            score: Math.round((u.score / (u.count * 10)) * 100) 
+        })).sort((a,b) => b.score - a.score);
+
+        // Security Update: Filter reports so only Admin sees all, or User sees only their own
+        const reports = isAdmin 
+            ? allResults 
+            : allResults.filter(r => r.userId.toString() === userId);
+        
+        res.json({ leaderboard, reports, isAdmin });
+    } catch (e) { res.status(500).json({ error: "Error fetching results" }); }
 });
 
 app.get("/history/:userId", async (req, res) => {
-    try {
-        const results = await Assessment.find({ userId: req.params.userId }).sort({ timestamp: -1 });
-        res.json(results);
-    } catch (e) { res.status(500).json({ error: "History retrieval failed" }); }
+    try { 
+        const results = await Assessment.find({ userId: req.params.userId }).sort({ timestamp: -1 }); 
+        res.json(results); 
+    } catch (e) { res.status(500).json({ error: "History Error" }); }
 });
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server active on ${PORT}`));

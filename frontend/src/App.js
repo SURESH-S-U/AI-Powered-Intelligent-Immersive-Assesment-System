@@ -5,7 +5,7 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { 
     LayoutDashboard, BookOpen, BarChart3, LogOut, Brain, Zap, 
     Loader2, X, Plus, ArrowRight, Target, Globe, TrendingUp, 
-    Activity, ShieldCheck, Lock, Mail, User as UserIcon, Timer, TimerOff, Calendar, Menu
+    Activity, ShieldCheck, Lock, Mail, User as UserIcon, Timer, TimerOff, Calendar, Menu, Users, Trophy
 } from 'lucide-react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -111,6 +111,7 @@ const App = () => {
                     {[
                         { id: 'dashboard', icon: <LayoutDashboard size={18}/>, label: 'Dashboard' },
                         { id: 'assessments', icon: <BookOpen size={18}/>, label: 'Assessments' },
+                        { id: 'rooms', icon: <Users size={18}/>, label: 'Neural Rooms' },
                         { id: 'reports', icon: <BarChart3 size={18}/>, label: 'Reports' },
                     ].map(item => (
                         <div key={item.id} onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }} className={`nav-link-custom ${activeTab === item.id ? 'active' : ''}`}>
@@ -131,6 +132,7 @@ const App = () => {
                     <AnimatePresence mode="wait">
                         {activeTab === 'dashboard' && <DashboardView user={user} setTab={setActiveTab} history={history} key="dash" />}
                         {activeTab === 'assessments' && <AssessmentCenter user={user} refreshHistory={fetchHistory} key="assess" />}
+                        {activeTab === 'rooms' && <RoomsView user={user} refreshHistory={fetchHistory} key="rooms" />}                        
                         {activeTab === 'reports' && <ReportsView user={user} history={history} loading={loadingHistory} key="report" />}
                     </AnimatePresence>
                 </div>
@@ -253,12 +255,9 @@ const AuthPage = ({ onAuth }) => {
     );
 };  
 
-
-
 const DashboardView = ({ user, setTab, history }) => {
     const gradientTextStyle = { background: 'linear-gradient(135deg, #60a5fa 0%, #a855f7 50%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundSize: '200% auto', display: 'inline-block' };
     
-    // ... (Your existing stats and skillMatrix code remains the same) ...
     const stats = useMemo(() => {
         const sessions = {};
         history.forEach(h => {
@@ -295,17 +294,9 @@ const DashboardView = ({ user, setTab, history }) => {
     return (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="mb-5 d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3">
-                
-                {/* --- NEW SECTION FOR USER IMAGE AND NAME --- */}
                 <div className="d-flex align-items-center gap-3">
                     {user?.picture ? (
-                        <img 
-                            src={user.picture} 
-                            alt="Profile" 
-                            className="rounded-circle border border-primary border-opacity-25 shadow-lg"
-                            style={{ width: '64px', height: '64px', objectFit: 'cover' }}
-                            referrerPolicy="no-referrer" 
-                        />
+                        <img src={user.picture} alt="Profile" className="rounded-circle border border-primary border-opacity-25 shadow-lg" style={{ width: '64px', height: '64px', objectFit: 'cover' }} referrerPolicy="no-referrer" />
                     ) : (
                         <div className="p-3 rounded-circle bg-primary bg-opacity-10 text-primary">
                             <UserIcon size={32} />
@@ -316,15 +307,12 @@ const DashboardView = ({ user, setTab, history }) => {
                         <h1 className="fw-black mb-0">Welcome, <span style={gradientTextStyle}>{user?.name}</span></h1>
                     </div>
                 </div>
-                {/* --- END OF IMAGE SECTION --- */}
-
                 <div className="p-3 px-4 rounded-4" style={glassStyle}>
                     <span className="small opacity-50 d-block">Intelligence Level</span>
                     <span className="h4 fw-black text-gradient">{stats.level}</span>
                 </div>
             </div>
 
-            {/* ... rest of your dashboard code ... */}
             <div className="row g-3 g-md-4 mb-5">
                 {[
                     { label: 'Avg Accuracy', value: stats.accuracy, icon: <TrendingUp size={20}/>, color: '#3b82f6' },
@@ -341,7 +329,6 @@ const DashboardView = ({ user, setTab, history }) => {
                 ))} 
                 <div className="col-12 col-md-3"><div className="p-3 p-md-4 h-100 d-flex align-items-center justify-content-center" style={glassStyle}><DifficultyCircle stats={stats.diffCounts} /></div></div>
             </div>
-            {/* (Keep the rest of your original code here) */}
             <div className="row g-4">
                 <div className="col-lg-8"><div className="p-4 p-md-5 rounded-5 h-100" style={{ minHeight: '300px', background: 'linear-gradient(135deg, rgba(59,130,246,0.15), transparent)', border: '1px solid rgba(59,130,246,0.2)' }}>
                     <h2 className="fw-black mb-3">Initialize Neural Assessment</h2>
@@ -364,8 +351,6 @@ const DashboardView = ({ user, setTab, history }) => {
         </motion.div>
     );
 };
-
-
 
 const AssessmentCenter = ({ user, refreshHistory }) => {
     const [domains, setDomains] = useState([]);
@@ -434,19 +419,20 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
     );
 };
 
-const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd }) => {
-    const [questions, setQuestions] = useState([]);
+const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd, questions: predefinedQuestions = null, sessionId: existingSessionId = null }) => {
+    const [questions, setQuestions] = useState(predefinedQuestions || []);
     const [currentStep, setCurrentStep] = useState(0);
     const [answers, setAnswers] = useState([]);
     const [currentInput, setCurrentInput] = useState("");
     const [results, setResults] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!predefinedQuestions);
     const [evaluating, setEvaluating] = useState(false);
-    const [sessionId] = useState(`session_${Date.now()}`);
+    const [sessionId] = useState(existingSessionId || `session_${Date.now()}`);
     const [timeLeft, setTimeLeft] = useState(30);
     const timerRef = useRef(null);
 
     const fetchAllQuestions = useCallback(async () => {
+        if (predefinedQuestions) return;
         setLoading(true);
         try {
             const res = await fetch(`${API_URL}/generate-assessment`, { 
@@ -458,7 +444,7 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd 
             setQuestions(data.questions || []);
         } catch (e) { alert("Core Link Failed"); onEnd(); }
         finally { setLoading(false); }
-    }, [difficulty, domains, type, limit, onEnd]);
+    }, [difficulty, domains, type, limit, onEnd, predefinedQuestions]);
 
     useEffect(() => { fetchAllQuestions(); }, [fetchAllQuestions]);
 
@@ -468,7 +454,7 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd 
             const res = await fetch(`${API_URL}/evaluate-batch`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
-                    userId: user.id, // FIX: Crucial mapping to Assessment Schema
+                    userId: user.id, 
                     username: user.name, 
                     answers: finalAnswers, 
                     domains, 
@@ -481,7 +467,7 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd 
             setResults(data.results);
         } catch (e) { alert("Evaluation error."); }
         finally { setEvaluating(false); }
-    }, [user.id, user.name, domains, sessionId, type, difficulty]); // Added user.id to dependencies
+    }, [user.id, user.name, domains, sessionId, type, difficulty]);
 
     const handleNext = useCallback((autoAnswer = null) => {
         const finalAnswer = autoAnswer || currentInput || "No response provided";
@@ -566,6 +552,423 @@ const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd 
                             <textarea className="custom-input mb-5" style={{ minHeight: '150px' }} value={currentInput} onChange={e => setCurrentInput(e.target.value)} placeholder="Type your response..."/>
                         )}
                         <button className="btn btn-primary w-100 py-3 fw-bold rounded-4 shadow-lg" onClick={() => handleNext()} disabled={!currentInput && type !== 'adaptive'}>{currentStep === questions.length - 1 ? "FINISH ASSESSMENT" : "NEXT CHALLENGE"}</button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const RoomsView = ({ user, refreshHistory }) => {
+    const [view, setView] = useState('landing');
+    const [roomCode, setRoomCode] = useState('');
+    const [isCreator, setIsCreator] = useState(false);
+    const [roomSettings, setRoomSettings] = useState({ type: 'multi', qCount: 5, difficulty: 'Intermediate', isTimed: true });
+    const [uploadData, setUploadData] = useState({ file: null, text: '' });
+    const [roomSessionActive, setRoomSessionActive] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [roomData, setRoomData] = useState(null);
+    const [leaderboardData, setLeaderboardData] = useState(null);
+    const [expandedReportId, setExpandedReportId] = useState(null);
+
+    // Sync Logic: Poll for room status and startTime
+    useEffect(() => {
+        let interval;
+        if (view === 'lobby' && !roomSessionActive) {
+            interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${API_URL}/room/${roomCode}`);
+                    const data = await res.json();
+                    setRoomData(data);
+                    // If admin started the test, activate for everyone
+                    if (data.status === 'in-progress' && data.startTime) {
+                        setRoomSessionActive(true);
+                        clearInterval(interval);
+                    }
+                } catch (e) { console.error("Sync error"); }
+            }, 2000);
+        }
+        return () => clearInterval(interval);
+    }, [view, roomSessionActive, roomCode]);
+
+    const handleCreateRoom = async () => {
+        setLoading(true);
+        const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+        try {
+            const res = await fetch(`${API_URL}/create-room`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ creatorId: user.id, roomCode: code, settings: roomSettings, studyMaterial: uploadData.text })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setRoomCode(code);
+                setRoomData(data.room);
+                setIsCreator(true);
+                setView('lobby');
+            }
+        } catch (e) { alert("Core Link Failed"); }
+        finally { setLoading(false); }
+    };
+
+    const handleJoinRoom = async (e) => {
+        e.preventDefault();
+        if (roomCode.length < 6) return alert("Code too short");
+        setLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/room/${roomCode}`);
+            const data = await res.json();
+            if (res.ok) {
+                setRoomData(data);
+                setIsCreator(data.creatorId === user.id);
+                setView('lobby');
+            } else alert("Invalid Code");
+        } catch (e) { alert("Error"); }
+        finally { setLoading(false); }
+    };
+
+    const handleAdminStart = async () => {
+        try {
+            const res = await fetch(`${API_URL}/room/${roomCode}/start`, { method: "PUT" });
+            const data = await res.json();
+            if (res.ok && data.room) {
+                // IMPORTANT: Update local roomData so Admin has the startTime
+                setRoomData(data.room); 
+                setRoomSessionActive(true);
+            }
+        } catch (e) { alert("Start Failed"); }
+    };
+
+    const handleFinish = async () => {
+        setRoomSessionActive(false);
+        setLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/room-results/${roomCode}?userId=${user.id}`);
+            const data = await res.json();
+            setLeaderboardData(data);
+            setView('results');
+            
+            // REFRESH HISTORY: This tells the main App to fetch the latest 
+            // assessment records so they appear in the Reports tab instantly.
+            if (refreshHistory) {
+                refreshHistory();
+            }
+        } catch (e) { 
+            console.error("Sync Error", e);
+            alert("Sync Error"); 
+        } finally { 
+            setLoading(false); 
+        }
+    };
+
+    // --- Lobby View ---
+    if (view === 'lobby') return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mx-auto" style={{ maxWidth: '850px' }}>
+            <div className="p-4 p-md-5" style={glassStyle}>
+                <div className="text-center mb-5">
+                    <div className="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-20 px-3 py-2 mb-3 fw-bold">Room: {roomCode}</div>
+                    <h2 className="fw-black mb-1">Synchronization Lobby</h2>
+                    <p className="opacity-50">{isCreator ? "Initialize when ready." : "Waiting for Admin to start link..."}</p>
+                </div>
+                <div className="row g-4 mb-5">
+                    <div className="col-12">
+                        <div className="p-4 rounded-4" style={{ background: 'rgba(59, 130, 246, 0.03)', border: '1px dashed rgba(59, 130, 246, 0.2)' }}>
+                            <h6 className="fw-bold mb-3 text-primary small">PROTOCOL SETTINGS</h6>
+                            <div className="d-flex gap-4 small opacity-70">
+                                <span>Type: <b className="uppercase">{roomData?.settings.type}</b></span>
+                                <span>Count: <b>{roomData?.settings.qCount}</b></span>
+                                <span>Difficulty: <b>{roomData?.settings.difficulty}</b></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="d-flex flex-column flex-md-row gap-3">
+                    {isCreator ? (
+                        <button className="btn btn-primary flex-grow-1 py-3 fw-bold rounded-4 shadow-lg" onClick={handleAdminStart}>INITIALIZE NEURAL LINK</button>
+                    ) : (
+                        <div className="btn btn-outline-light disabled flex-grow-1 py-3 fw-bold rounded-4 opacity-25">SYNCHRONIZING WITH HOST...</div>
+                    )}
+                    <button className="btn btn-outline-danger px-4 rounded-4 fw-bold" onClick={() => setView('landing')}>LEAVE</button>
+                </div>
+            </div>
+
+            {roomSessionActive && roomData && (
+                <div className="position-fixed top-0 start-0 w-100 h-100 bg-dark z-3 p-3 p-md-5 overflow-auto" style={{ background: '#020617', zIndex: 9999 }}>
+                    <ActiveRoomSession 
+                        user={user} 
+                        roomData={roomData} 
+                        onEnd={handleFinish} 
+                    />
+                </div>
+            )}
+        </motion.div>
+    );
+
+    // --- Results & Leaderboard View ---
+    if (view === 'results') return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mx-auto" style={{ maxWidth: '850px' }}>
+            <div className="p-4 p-md-5" style={glassStyle}>
+                <div className="text-center mb-5">
+                    <Trophy size={42} className="text-warning mb-3" />
+                    <h2 className="fw-black">Leaderboard</h2>
+                    <p className="opacity-50 small uppercase tracking-widest">Protocol {roomCode} Results</p>
+                </div>
+                
+                <div className="mb-5">
+                    {leaderboardData?.leaderboard.map((p, i) => (
+                        <div key={i} className="mb-2">
+                            <div className={`p-3 rounded-4 d-flex align-items-center justify-content-between ${p.userId === user.id ? 'border border-primary bg-primary bg-opacity-10' : ''}`} style={{ background: 'rgba(255,255,255,0.02)' }}>
+                                <div className="d-flex align-items-center gap-3">
+                                    <span className="fw-black opacity-25">#0{i + 1}</span>
+                                    <span className="fw-bold">{p.username}</span>
+                                </div>
+                                <div className="d-flex align-items-center gap-3">
+                                    <span className="fw-black text-primary">{p.score}%</span>
+                                    {/* Updated Logic: Only Admin or the User themselves can see the button */}
+                                    {(leaderboardData.isAdmin || p.userId === user.id) ? (
+                                        <button 
+                                            className="btn btn-sm btn-outline-primary rounded-pill px-3" 
+                                            onClick={() => setExpandedReportId(expandedReportId === p.userId ? null : p.userId)}
+                                        >
+                                            {expandedReportId === p.userId ? "HIDE" : "VIEW REPORT"}
+                                        </button>
+                                    ) : (
+                                        <span className="badge rounded-pill bg-white bg-opacity-5 text-white opacity-25 px-3 py-2 small">LOCKED</span>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <AnimatePresence>
+                                {expandedReportId === p.userId && (
+                                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden mt-2 p-4 rounded-4" style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                        {/* Dynamic Header based on Test Type */}
+                                        <div className="text-center mb-4 pb-3 border-bottom border-white border-opacity-10">
+                                            <h4 className="fw-black text-gradient">
+                                                {roomData.settings.type === 'multi' 
+                                                    ? `${leaderboardData.reports.filter(r => r.userId === p.userId && r.score >= 8).length} / ${roomData.settings.qCount} Correct`
+                                                    : `${p.score}% Accuracy`
+                                                }
+                                            </h4>
+                                        </div>
+
+                                        {leaderboardData.reports.filter(r => r.userId === p.userId).map((rep, idx) => (
+                                            <div key={idx} className="mb-3 pb-3 border-bottom border-white border-opacity-5">
+                                                <div className="d-flex justify-content-between small mb-1">
+                                                    <span className="opacity-50 fw-bold">Q{idx + 1}</span>
+                                                    <span className={rep.score >= 8 ? 'text-success fw-bold' : 'text-danger fw-bold'}>
+                                                        {roomData.settings.type === 'multi' ? (rep.score >= 8 ? 'CORRECT' : 'INCORRECT') : `${rep.score * 10}%`}
+                                                    </span>
+                                                </div>
+                                                <div className="fw-bold mb-1" style={{ fontSize: '0.9rem' }}>{rep.challenge}</div>
+                                                <div className="small opacity-60 italic">Feedback: {rep.feedback}</div>
+                                            </div>
+                                        ))}
+
+                                        {/* Study Suggestions at the Bottom */}
+                                        <div className="mt-4 p-3 rounded-4" style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.1)' }}>
+                                            <h6 className="text-primary fw-bold small mb-2 uppercase tracking-widest">Neural Suggestions</h6>
+                                            <p className="small mb-0 opacity-70">{leaderboardData.reports.find(r => r.userId === p.userId)?.suggestion || "Keep practicing the core concepts."}</p>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    ))}
+                </div>
+                <button className="btn btn-primary w-100 py-3 rounded-4 fw-bold shadow-lg" onClick={() => setView('landing')}>DISCONNECT PROTOCOL</button>
+            </div>
+        </motion.div>
+    );
+
+    // --- Landing / Initialization View ---
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <div className="mb-4"><h1 className="fw-black">Neural Rooms</h1><p className="opacity-50">Shared real-time synchronization protocols.</p></div>
+            <div className="row g-4">
+                <div className="col-lg-6">
+                    <div className="p-4 p-md-5 h-100" style={glassStyle}>
+                        <Plus size={32} className="text-primary mb-4" />
+                        <h3 className="fw-black mb-3">Initialize</h3>
+                        <textarea className="custom-input mb-3" placeholder="Paste study material or topics..." rows="3" value={uploadData.text} onChange={e => setUploadData({ ...uploadData, text: e.target.value })} />
+                        <div className="row g-2 mb-4">
+                            <div className="col-6">
+                                <select className="custom-input small" value={roomSettings.type} onChange={e => setRoomSettings({ ...roomSettings, type: e.target.value })}>
+                                    <option value="multi" style={{ background: '#020617' }}>MCQ Mode</option>
+                                    <option value="adaptive" style={{ background: '#020617' }}>Scenario Mode</option>
+                                </select>
+                            </div>
+                            <div className="col-6">
+                                <select className="custom-input small" value={roomSettings.qCount} onChange={e => setRoomSettings({ ...roomSettings, qCount: parseInt(e.target.value) })}>
+                                    {[3, 5, 10, 15].map(n => <option key={n} value={n} style={{ background: '#020617' }}>{n} Questions</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <button className="btn btn-primary w-100 py-3 fw-bold rounded-4 shadow-lg" onClick={handleCreateRoom} disabled={loading}>{loading ? <Loader2 className="spinner-border spinner-border-sm" /> : "GENERATE ROOM"}</button>
+                    </div>
+                </div>
+                <div className="col-lg-6">
+                    <div className="p-4 p-md-5 h-100" style={glassStyle}>
+                        <Users size={32} className="text-primary mb-4" />
+                        <h3 className="fw-black mb-3">Join</h3>
+                        <form onSubmit={handleJoinRoom} className="d-flex flex-column align-items-center">
+                            <input className="custom-input mb-3 text-center fs-5 tracking-widest text-uppercase" style={{ maxWidth: '280px' }} placeholder="ROOM CODE" maxLength="8" value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} />
+                            <button className="btn btn-outline-primary w-100 py-3 fw-bold rounded-4" type="submit" disabled={loading}>{loading ? "LINKING..." : "CONNECT TO LINK"}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+// --- NEW COMPONENT: Synchronized Active Session ---
+const ActiveRoomSession = ({ user, roomData, onEnd }) => {
+    const { questions, startTime, settings } = roomData;
+    const [currentStep, setCurrentStep] = useState(0);
+    const [answers, setAnswers] = useState([]);
+    const [selectedOption, setSelectedOption] = useState("");
+    const [textInput, setTextInput] = useState("");
+    const [evaluating, setEvaluating] = useState(false);
+    const [timeLeft, setTimeLeft] = useState(30);
+
+    // Refs to track current input values without re-triggering the timer useEffect
+    const selectedRef = useRef("");
+    const textRef = useRef("");
+
+    useEffect(() => {
+        selectedRef.current = selectedOption;
+    }, [selectedOption]);
+
+    useEffect(() => {
+        textRef.current = textInput;
+    }, [textInput]);
+
+    const handleAutoFinish = useCallback(async (finalAnswers) => {
+        if (evaluating) return;
+        setEvaluating(true);
+        
+        try {
+            await fetch(`${API_URL}/evaluate-batch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user.id,
+                    username: user.name,
+                    answers: finalAnswers,
+                    domains: ["Room Assessment"],
+                    sessionId: roomData.roomCode,
+                    type: settings.type,
+                    difficulty: settings.difficulty
+                })
+            });
+            onEnd(); // This triggers the parent's handleFinish which fetches results
+        } catch (e) { 
+            console.error("Final Sync Failed", e); 
+            onEnd(); 
+        }
+    }, [user, roomData, settings, evaluating, onEnd]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (!startTime) return;
+
+            const now = new Date().getTime();
+            const start = new Date(startTime).getTime();
+            if (isNaN(start)) return;
+
+            const totalElapsedSeconds = Math.floor((now - start) / 1000);
+            const safeElapsed = Math.max(0, totalElapsedSeconds);
+            const step = Math.floor(safeElapsed / 30);
+            const remaining = 30 - (safeElapsed % 30);
+
+            if (step >= questions.length) {
+                clearInterval(timer);
+                // Capture last response and finish
+                const finalSet = [...answers, {
+                    challenge: questions[currentStep]?.challenge,
+                    answer: settings.type === 'multi' ? selectedRef.current : textRef.current,
+                    correctAnswer: questions[currentStep]?.correctAnswer || ""
+                }];
+                handleAutoFinish(finalSet);
+            } else {
+                if (step !== currentStep) {
+                    // Save previous question's answer
+                    setAnswers(prev => [...prev, {
+                        challenge: questions[currentStep]?.challenge,
+                        answer: settings.type === 'multi' ? selectedRef.current : textRef.current,
+                        correctAnswer: questions[currentStep]?.correctAnswer || ""
+                    }]);
+                    setCurrentStep(step);
+                    setSelectedOption("");
+                    setTextInput("");
+                }
+                setTimeLeft(remaining);
+            }
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [startTime, currentStep, questions, settings.type, answers, handleAutoFinish]);
+
+    if (!startTime) {
+        return (
+            <div className="text-center py-5 mt-5">
+                <Loader2 className="spinner-border text-primary mb-3" />
+                <p className="fw-bold opacity-50 uppercase tracking-widest">Initialising Neural Start Time...</p>
+            </div>
+        );
+    }
+
+    const currentQ = questions[currentStep];
+
+    return (
+        <div className="mx-auto mt-5" style={{ maxWidth: '850px' }}>
+            <div className="p-4 p-md-5" style={{ ...glassStyle, background: 'rgba(2, 6, 23, 0.8)' }}>
+                <div className="d-flex justify-content-between mb-4 align-items-center">
+                    <span className="text-primary fw-bold tracking-widest uppercase">Question {currentStep + 1} / {questions.length}</span>
+                    <div className="d-flex align-items-center gap-2 px-3 py-1 rounded-pill bg-danger bg-opacity-10 text-danger border border-danger border-opacity-20">
+                        <Timer size={14} /> <span className="fw-bold">{timeLeft}s</span>
+                    </div>
+                </div>
+
+                <div className="mb-4 w-100" style={{ background: 'rgba(255,255,255,0.05)', height: '4px', borderRadius: '2px' }}>
+                    <div className="timer-bar" style={{ width: `${(timeLeft / 30) * 100}%`, transition: 'width 1s linear' }}></div>
+                </div>
+
+                {evaluating ? (
+                    <div className="text-center py-5"><Loader2 className="spinner-border text-primary mb-3" /><p className="fw-bold opacity-50 uppercase">Syncing Results...</p></div>
+                ) : (
+                    <>
+                        {/* REQ 2: Smaller font size and compressed line height for Adaptive Scenarios */}
+                        <h2 className={`fw-bold mb-5 challenge-text ${settings.type === 'adaptive' ? 'fs-4 lh-sm' : ''}`}>
+                            {currentQ?.challenge}
+                        </h2>
+                        
+                        {settings.type === 'multi' ? (
+                            <div className="row g-3">
+                                {currentQ?.options.map((opt, i) => (
+                                    <div className="col-12 col-md-6" key={i}>
+                                        <button 
+                                            className={`btn w-100 py-3 rounded-4 fw-bold text-start px-4 transition-all ${selectedOption === opt ? 'btn-primary shadow-lg' : 'btn-outline-light opacity-50'}`}
+                                            onClick={() => setSelectedOption(opt)}
+                                        >
+                                            {opt}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <textarea 
+                                className="custom-input fs-5" 
+                                style={{ minHeight: '200px' }} 
+                                placeholder="Type your neural response..."
+                                value={textInput}
+                                onChange={(e) => setTextInput(e.target.value)}
+                            />
+                        )}
+
+                        <div className="mt-5 text-center opacity-40 small uppercase tracking-widest fw-bold">
+                            Auto-advancing in {timeLeft} seconds...
+                        </div>
                     </>
                 )}
             </div>
