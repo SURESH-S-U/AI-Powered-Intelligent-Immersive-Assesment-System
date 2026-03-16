@@ -5,7 +5,8 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { 
     LayoutDashboard, BookOpen, BarChart3, LogOut, Brain, Zap, 
     Loader2, X, Plus, ArrowRight, Target, Globe, TrendingUp, 
-    Activity, ShieldCheck, Lock, Mail, User as UserIcon, Timer, TimerOff, Calendar, Menu, Users, Trophy
+    Activity, ShieldCheck, Lock, Mail, User as UserIcon, Timer, TimerOff, Calendar, Menu, Users, Trophy,
+    RotateCw // Added this
 } from 'lucide-react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -568,12 +569,11 @@ const RoomsView = ({ user, refreshHistory }) => {
         type: 'multi', 
         qCount: 5, 
         difficulty: 'Intermediate', 
-        timer: 30 
+        timer: 30,
+        hostAttendance: 'attend' 
     });
     const [customQ, setCustomQ] = useState("");
     const [uploadData, setUploadData] = useState({ text: '' });
-    
-    // --- NEW STATES FOR CUSTOM JSON ---
     const [customJson, setCustomJson] = useState("");
     const [showSample, setShowSample] = useState(false);
     
@@ -583,20 +583,43 @@ const RoomsView = ({ user, refreshHistory }) => {
     const [leaderboardData, setLeaderboardData] = useState(null);
     const [expandedReportId, setExpandedReportId] = useState(null);
 
-    // --- SAMPLE JSON DATA ---
+    // --- REUSABLE FETCH FUNCTION FOR REFRESH ---
+    const fetchLeaderboard = useCallback(async (manual = false) => {
+        if (!roomCode) return;
+        if (manual) setLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/room-results/${roomCode}?userId=${user.id}`);
+            const data = await res.json();
+            if (data.leaderboard || data.reports) {
+                setLeaderboardData(data.leaderboard);
+                const hostStatus = data.creatorId === user.id || data.isAdmin;
+                setIsCreator(hostStatus);
+                setRoomData(prev => ({ ...prev, ...data, reports: data.reports, isAdmin: hostStatus }));
+
+                // Set initial expanded report if not already set manually
+                if (!expandedReportId) {
+                    const userHasReport = data.reports.some(r => r.userId === user.id);
+                    if (userHasReport) {
+                        setExpandedReportId(user.id);
+                    } else if (hostStatus && data.leaderboard.length > 0) {
+                        setExpandedReportId(data.leaderboard[0].userId);
+                    }
+                }
+            }
+        } catch (e) { 
+            console.error("Results fetch error:", e); 
+        } finally { 
+            setLoading(false); 
+        }
+    }, [roomCode, user.id, expandedReportId]);
+
     const sampleJsonFormat = {
         questions: [
             {
-                challenge: "What does LAN stand for in computer networks?",
+                challenge: "What does LAN stand for?",
                 options: ["Local Area Network", "Large Area Network", "Low Access Network", "Local Access Node"],
                 correctAnswer: "Local Area Network",
-                explanation: "LAN connects computers within a limited area like a residence or office."
-            },
-            {
-                challenge: "Which protocol is used for sending emails?",
-                options: ["HTTP", "SMTP", "FTP", "SSH"],
-                correctAnswer: "SMTP",
-                explanation: "Simple Mail Transfer Protocol (SMTP) is used for email transmission."
+                explanation: "LAN connects computers within a limited area."
             }
         ]
     };
@@ -635,77 +658,33 @@ const RoomsView = ({ user, refreshHistory }) => {
         return () => clearInterval(interval);
     }, [view, roomSessionActive, roomCode, user.id]);
 
+    // Initial fetch when entering results view
     useEffect(() => {
         if (view === 'results' && roomCode) {
-            const getResults = async () => {
-                setLoading(true);
-                await new Promise(resolve => setTimeout(resolve, 800)); 
-                
-                try {
-                    const res = await fetch(`${API_URL}/room-results/${roomCode}?userId=${user.id}`);
-                    const data = await res.json();
-                    
-                    if (data.success || data.leaderboard) {
-                        setLeaderboardData(data.leaderboard);
-                        const hostStatus = data.creatorId === user.id || data.isAdmin;
-                        setIsCreator(hostStatus);
-
-                        setRoomData(prev => ({ 
-                            ...prev, 
-                            reports: data.reports, 
-                            isAdmin: hostStatus,
-                            creatorId: data.creatorId 
-                        }));
-                        
-                        setExpandedReportId(user.id);
-                    }
-                } catch (e) { 
-                    console.error("Results synchronization error:", e); 
-                } finally { 
-                    setLoading(false); 
-                }
-            };
-            getResults();
+            fetchLeaderboard();
         }
-    }, [view, roomCode, user.id]);
+    }, [view, roomCode, fetchLeaderboard]);
 
     const handleCreateRoom = async () => {
         resetRoomState(); 
         setLoading(true);
-
         const finalQCount = customQ !== "" ? parseInt(customQ) : roomSettings.qCount;
         let parsedQuestions = null;
 
-        // Check for Custom JSON Input
         if (customJson.trim() !== "") {
             try {
                 const parsed = JSON.parse(customJson);
-                if (!parsed.questions || !Array.isArray(parsed.questions)) {
-                    throw new Error("JSON must contain a 'questions' array.");
-                }
-                
-                // Shuffle and slice based on the User's "Questions Count" input
-                parsedQuestions = parsed.questions
-                    .sort(() => 0.5 - Math.random())
-                    .slice(0, finalQCount);
-
-            } catch (e) {
-                alert("Invalid JSON format. Please check the structure.");
-                setLoading(false);
-                return;
-            }
+                parsedQuestions = parsed.questions.sort(() => 0.5 - Math.random()).slice(0, finalQCount);
+            } catch (e) { alert("Invalid JSON format."); setLoading(false); return; }
         }
 
         const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-        
         try {
             const res = await fetch(`${API_URL}/create-room`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
-                    creatorId: user.id, 
-                    username: user.name, 
-                    roomCode: code, 
+                    creatorId: user.id, username: user.name, roomCode: code, 
                     settings: { ...roomSettings, qCount: finalQCount }, 
                     studyMaterial: uploadData.text,
                     customQuestions: parsedQuestions 
@@ -753,69 +732,85 @@ const RoomsView = ({ user, refreshHistory }) => {
     };
 
     if (view === 'results') return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mx-auto" style={{ maxWidth: '1000px' }}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mx-auto" style={{ maxWidth: '1100px' }}>
             <div className="d-flex justify-content-between align-items-center mb-5">
                 <div>
                     <h6 className="text-primary fw-bold tracking-widest uppercase mb-1">Session Concluded</h6>
-                    <h1 className="fw-black mb-0 text-white">Synchronization Results</h1>
+                    <h1 className="fw-black mb-0 text-white">
+                        {isCreator ? "Host Management Hub" : "Neural Assessment Report"}
+                    </h1>
                 </div>
-                <button className="btn btn-outline-primary px-4 rounded-pill fw-bold" onClick={() => { resetRoomState(); setRoomCode(''); setView('landing'); }}>BACK TO HUB</button>
+                <div className="d-flex gap-2">
+                    {/* --- REFRESH BUTTON --- */}
+                    <button 
+                        className="btn btn-dark border-white border-opacity-10 rounded-pill px-3 d-flex align-items-center gap-2"
+                        onClick={() => fetchLeaderboard(true)}
+                        disabled={loading}
+                    >
+                        <RotateCw size={16} className={loading ? 'animate-spin' : ''} />
+                        <span className="small fw-bold d-none d-md-inline">SYNC DATA</span>
+                    </button>
+                    <button className="btn btn-outline-primary px-4 rounded-pill fw-bold" onClick={() => { resetRoomState(); setRoomCode(''); setView('landing'); }}>BACK TO HUB</button>
+                </div>
             </div>
 
             <div className="row g-4">
-                <div className="col-lg-5">
-                    <div className="p-4 rounded-5 border border-white border-opacity-10 bg-dark shadow-lg h-100">
-                        <div className="d-flex align-items-center gap-3 mb-4">
-                            <Trophy className="text-warning" size={24} />
-                            <h5 className="fw-black text-white uppercase tracking-widest mb-0">Operative Rankings</h5>
-                        </div>
-                        {loading ? <div className="text-center py-5" ><Loader2 className="animate-spin text-primary"/></div> : (
-                            <div className="d-flex flex-column gap-3">
-                                {leaderboardData?.map((entry, idx) => (
-                                    <div key={idx} className="p-3 rounded-4 border border-white border-opacity-10 bg-black bg-opacity-5 d-flex justify-content-between align-items-center" >
-                                        <div className="d-flex align-items-center gap-3 text-white">
-                                            <span className="opacity-40 fw-black">#{idx + 1}</span>
-                                            <div>
-                                                <div className="fw-bold small">{entry.username} {entry.userId === user.id ? "(You)" : ""}</div>
-                                                <div className="text-primary fw-bold" style={{ fontSize: '0.75rem' }}>{entry.score}% Accuracy</div>
-                                            </div>
-                                        </div>
-
-                                        {(isCreator || entry.userId === user.id) ? (
-                                            <button 
-                                                className={`btn btn-sm rounded-pill px-3 fw-bold ${expandedReportId === entry.userId ? 'btn-light text-dark' : 'btn-primary'}`}
-                                                style={{ fontSize: '0.65rem' }}
-                                                onClick={() => setExpandedReportId(expandedReportId === entry.userId ? null : entry.userId)}
-                                            >
-                                                {expandedReportId === entry.userId ? 'HIDE' : 'VIEW REPORT'}
-                                            </button>
-                                        ) : (
-                                            <div className="text-xxs opacity-25 uppercase text-white tracking-widest px-2">Encrypted</div>
-                                        )}
-                                    </div>
-                                ))}
+                {isCreator && (
+                    <div className="col-lg-5">
+                        <div className="p-4 rounded-5 border border-white border-opacity-10 bg-dark shadow-lg h-100">
+                            <div className="d-flex align-items-center justify-content-between mb-4">
+                                <div className="d-flex align-items-center gap-3">
+                                    <Trophy className="text-warning" size={24} />
+                                    <h5 className="fw-black text-white uppercase tracking-widest mb-0">Operative Rankings</h5>
+                                </div>
                             </div>
-                        )}
+                            <div className="d-flex flex-column gap-3">
+                                {leaderboardData && leaderboardData.length > 0 ? (
+                                    leaderboardData.map((entry, idx) => (
+                                        <div key={idx} className="p-3 rounded-4 border border-white border-opacity-10 bg-black bg-opacity-5 d-flex justify-content-between align-items-center" >
+                                            <div className="d-flex align-items-center gap-3 text-white">
+                                                <span className="text-primary fw-black" style={{ minWidth: '35px', fontSize: '1.1rem' }}>#{entry.rank}</span>
+                                                <div>
+                                                    <div className="fw-bold small">{entry.username} {entry.userId === user.id ? "(You)" : ""}</div>
+                                                    <div className="text-primary fw-bold" style={{ fontSize: '0.75rem' }}>{entry.score}% Accuracy</div>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                className={`btn btn-sm rounded-pill px-3 fw-bold ${expandedReportId === entry.userId ? 'btn-light text-dark' : 'btn-primary'}`} 
+                                                style={{ fontSize: '0.65rem' }} 
+                                                onClick={() => setExpandedReportId(entry.userId)}
+                                            >
+                                                {expandedReportId === entry.userId ? 'VIEWING' : 'VIEW'}
+                                            </button>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center opacity-40 py-5 text-white italic">
+                                        {loading ? "Synchronizing..." : "No operative results found."}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                </div>
+                )}
 
-                <div className="col-lg-7">
-                    <div className="p-4 rounded-5 border border-white border-opacity-10 bg-black bg-opacity-40 h-100">
-                        {/* IMPROVED HEADER: Diagnostic Analysis + Total Score */}
-                        <div className="d-flex justify-content-between align-items-center mb-4">
-                            <h5 className="text-primary fw-black uppercase tracking-widest mb-0" style={{ fontSize: '0.8rem' }}>Diagnostic Data Analysis</h5>
-                            {expandedReportId && (
-                                <div className="fw-black text-white px-3 py-1 rounded-3 bg-dark bg-opacity-5 border border-white border-opacity-10" style={{ fontSize: '1.1rem' }}>
-                                    <span className="opacity-50 small uppercase me-2">Final Score:</span>
-                                    {roomData?.reports?.filter(r => r.userId === expandedReportId && r.score >= 8).length} / {roomData?.reports?.filter(r => r.userId === expandedReportId).length}
+                <div className={isCreator ? "col-lg-7" : "col-12 mx-auto"} style={!isCreator ? {maxWidth: '850px'} : {}}>
+                    <div className="p-4 rounded-5 border border-white border-opacity-10 bg-black bg-opacity-40 h-100 shadow-lg">
+                        <div className="d-flex justify-content-between align-items-center mb-4 border-bottom border-white border-opacity-5 pb-3">
+                            <h5 className="text-primary fw-black uppercase tracking-widest mb-0" style={{ fontSize: '0.8rem' }}>
+                                {isCreator ? `Diagnostics: ${leaderboardData?.find(l => l.userId === expandedReportId)?.username || 'Selecting...'}` : "Personal Diagnostic Analysis"}
+                            </h5>
+                            {expandedReportId && roomData?.reports && (
+                                <div className="fw-black text-white" style={{ fontSize: '1.2rem' }}>
+                                    SCORE: {roomData.reports.filter(r => r.userId === expandedReportId && r.score >= 8).length} / {roomData.reports.filter(r => r.userId === expandedReportId).length}
                                 </div>
                             )}
                         </div>
-
+                        
                         {!expandedReportId ? (
                             <div className="text-center py-5 h-100 d-flex flex-column justify-content-center text-white">
-                                <Brain className="opacity-10 mx-auto mb-3" size={64} />
-                                <p className="opacity-25 italic small">{isCreator ? "Select an operative to view detailed analysis." : "Deep diagnostics restricted to Neural Host."}</p>
+                                {loading ? <Loader2 size={64} className="animate-spin opacity-10 mx-auto mb-3" /> : <Brain className="opacity-10 mx-auto mb-3" size={64} />}
+                                <p className="opacity-25 italic small">{loading ? "Updating neural maps..." : "Waiting for data selection..."}</p>
                             </div>
                         ) : (
                             <div className="d-flex flex-column gap-4">
@@ -823,15 +818,14 @@ const RoomsView = ({ user, refreshHistory }) => {
                                     <div key={idx} className="p-4 rounded-4 border border-white border-opacity-5 bg-dark shadow-sm text-white">
                                         <div className="d-flex justify-content-between mb-3 align-items-start">
                                             <span className="badge bg-dark bg-opacity-10 text-primary border border-primary border-opacity-20 px-3">Challenge {idx + 1}</span>
-                                            {/* IMPROVED STATUS: Only Correct/Incorrect text */}
                                             <span className={`fw-black uppercase tracking-widest ${report.score >= 8 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '0.75rem' }}>
                                                 {report.score >= 8 ? 'CORRECT' : 'INCORRECT'}
                                             </span>
                                         </div>
                                         <h6 className="fw-bold mb-3" style={{ fontSize: '0.95rem' }}>{report.challenge}</h6>
                                         <div className="p-3 rounded-3 bg-dark bg-opacity-5 border border-white border-opacity-5 mb-3">
-                                            <span className="text-xxs uppercase opacity-50 d-block mb-1">{expandedReportId === user.id ? "Your Response :" : "Operative Response :"}</span>
-                                            <div className="small opacity-90">{report.answer || "No response."}</div>
+                                            <span className="text-xxs uppercase opacity-50 d-block mb-1">Operative Response :</span>
+                                            <div className="small opacity-90">{report.answer || "N/A"}</div>
                                         </div>
                                         <div className="p-3 rounded-3 border border-primary border-opacity-20 bg-primary bg-opacity-10">
                                             <span className="text-xxs uppercase text-primary d-block mb-1 fw-bold">Neural Feedback</span>
@@ -839,6 +833,23 @@ const RoomsView = ({ user, refreshHistory }) => {
                                         </div>
                                     </div>
                                 ))}
+
+                                {roomData?.reports?.find(r => r.userId === expandedReportId)?.suggestion && (
+                                    <motion.div 
+                                        initial={{ opacity: 0, scale: 0.95 }} 
+                                        animate={{ opacity: 1, scale: 1 }} 
+                                        className="p-4 rounded-4 shadow-lg mt-2"
+                                        style={{ background: 'rgba(255, 193, 7, 0.1)', border: '2px solid #ffc107' }}
+                                    >
+                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                            <Brain size={20} style={{ color: '#ffc107' }} />
+                                            <span className="text-xs uppercase fw-black tracking-widest" style={{ color: '#ffc107' }}>Suggestion :</span>
+                                        </div>
+                                        <p className="small text-white opacity-90 mb-0 fw-bold italic" style={{ lineHeight: '1.6' }}>
+                                            {roomData.reports.find(r => r.userId === expandedReportId).suggestion}
+                                        </p>
+                                    </motion.div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -847,6 +858,9 @@ const RoomsView = ({ user, refreshHistory }) => {
         </motion.div>
     );
 
+    // ... Rest of the component (lobby, landing) remains the same
+
+    // ... (rest of the component: lobby, landing views remain unchanged)
     if (view === 'lobby') return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-vh-100 p-3 p-md-5">
             <div className="mx-auto mb-4 d-flex flex-column flex-lg-row gap-3 align-items-stretch" style={{ maxWidth: '950px' }}>
@@ -935,54 +949,28 @@ const RoomsView = ({ user, refreshHistory }) => {
                                 <textarea className="custom-input" placeholder="Paste context here..." rows="2" value={uploadData.text} onChange={e => setUploadData({ text: e.target.value })} />
                             </div>
 
-                            {/* --- QUESTIONS JSON BLOCK --- */}
                             <div className="col-12 text-white">
                                 <div className="d-flex justify-content-between align-items-center mb-2">
                                     <label className="small fw-bold opacity-50 uppercase mb-0 d-block">Questions - JSON</label>
-                                    <button 
-                                        type="button"
-                                        className="btn btn-link btn-sm text-primary p-0 text-decoration-none fw-bold" 
-                                        style={{ fontSize: '0.65rem' }}
-                                        onClick={() => setShowSample(!showSample)}
-                                    >
+                                    <button type="button" className="btn btn-link btn-sm text-primary p-0 text-decoration-none fw-bold" style={{ fontSize: '0.65rem' }} onClick={() => setShowSample(!showSample)}>
                                         {showSample ? "[ HIDE SAMPLE ]" : "[ SEE SAMPLE JSON ]"}
                                     </button>
                                 </div>
-                                
                                 {showSample && (
                                     <div className="mb-3 p-3 rounded-4 bg-black bg-opacity-50 border border-white border-opacity-10">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <span className="text-xxs text-success fw-bold">REQUIRED STRUCTURE:</span>
                                             <button type="button" className="btn btn-xxs btn-outline-primary py-0" style={{ fontSize: '0.6rem' }} onClick={handleCopySample}>COPY JSON</button>
                                         </div>
-                                        <pre className="text-xxs opacity-75 mb-0" style={{ maxHeight: '120px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-                                            {JSON.stringify(sampleJsonFormat, null, 2)}
-                                        </pre>
+                                        <pre className="text-xxs opacity-75 mb-0" style={{ maxHeight: '120px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>{JSON.stringify(sampleJsonFormat, null, 2)}</pre>
                                     </div>
                                 )}
-
-                                <textarea 
-                                    className="custom-input font-monospace" 
-                                    style={{ fontSize: '0.8rem' }}
-                                    placeholder='Paste custom JSON here... {"questions": [...]}' 
-                                    rows="4" 
-                                    value={customJson} 
-                                    onChange={e => setCustomJson(e.target.value)} 
-                                />
+                                <textarea className="custom-input font-monospace" style={{ fontSize: '0.8rem' }} placeholder='Paste custom JSON here...' rows="4" value={customJson} onChange={e => setCustomJson(e.target.value)} />
                             </div>
 
                             <div className="col-md-6 text-white">
                                 <label className="small fw-bold opacity-50 uppercase mb-2 d-block">Difficulty</label>
-                                <select 
-                                    className="custom-input" 
-                                    value={roomSettings.difficulty} 
-                                    disabled={customJson.trim() !== ""}
-                                    style={{ 
-                                        opacity: customJson.trim() !== "" ? 0.3 : 1, 
-                                        cursor: customJson.trim() !== "" ? 'not-allowed' : 'pointer' 
-                                    }}
-                                    onChange={e => setRoomSettings({ ...roomSettings, difficulty: e.target.value })}
-                                >
+                                <select className="custom-input" value={roomSettings.difficulty} disabled={customJson.trim() !== ""} style={{ opacity: customJson.trim() !== "" ? 0.3 : 1 }} onChange={e => setRoomSettings({ ...roomSettings, difficulty: e.target.value })}>
                                     <option value="Beginner" style={{ background: '#020617' }}>Easy</option>
                                     <option value="Intermediate" style={{ background: '#020617' }}>Intermediate</option>
                                     <option value="Advanced" style={{ background: '#020617' }}>Advanced</option>
@@ -998,7 +986,15 @@ const RoomsView = ({ user, refreshHistory }) => {
                             </div>
                             <div className="col-md-6 text-white">
                                 <label className="small fw-bold opacity-50 uppercase mb-2 d-block">Questions Count</label>
-                                <input className="custom-input no-spinners" type="number" placeholder={customJson.trim() !== "" ? "Select count from JSON" : "Target count"} value={customQ} onChange={e => setCustomQ(e.target.value)} />
+                                <input className="custom-input no-spinners" type="number" value={customQ} onChange={e => setCustomQ(e.target.value)} />
+                            </div>
+
+                            <div className="col-md-6 text-white">
+                                <label className="small fw-bold opacity-50 uppercase mb-2 d-block">Admin Protocol</label>
+                                <select className="custom-input border-primary" value={roomSettings.hostAttendance} onChange={e => setRoomSettings({ ...roomSettings, hostAttendance: e.target.value })}>
+                                    <option value="attend" style={{ background: '#020617' }}>Participate & Appear in Rankings</option>
+                                    <option value="monitor" style={{ background: '#020617' }}>Monitor Only (Hide from Rankings)</option>
+                                </select>
                             </div>
                         </div>
                         <button className="btn btn-primary w-100 py-3 fw-black rounded-4" onClick={handleCreateRoom} disabled={loading}>{loading ? <Loader2 size={18} className="animate-spin" /> : "GENERATE NEURAL ROOM"}</button>
@@ -1018,20 +1014,17 @@ const RoomsView = ({ user, refreshHistory }) => {
     );
 };
 
-// --- NEW COMPONENT: Synchronized Active Session ---
 const ActiveRoomSession = ({ user, roomData, onEnd }) => {
-    const { questions, startTime, settings } = roomData;
-    
-    // NEW: Get the dynamic timer from settings, default to 30 if not found
+    const { questions, startTime, settings, creatorId } = roomData;
     const STEP_TIME = settings.timer || 30; 
+    
+    const isMonitoringHost = user.id === creatorId && settings.hostAttendance === 'monitor';
 
     const [currentStep, setCurrentStep] = useState(0);
     const [answers, setAnswers] = useState([]);
     const [selectedOption, setSelectedOption] = useState("");
     const [textInput, setTextInput] = useState("");
     const [evaluating, setEvaluating] = useState(false);
-    
-    // Initialize timeLeft with the custom STEP_TIME
     const [timeLeft, setTimeLeft] = useState(STEP_TIME);
 
     const selectedRef = useRef("");
@@ -1042,43 +1035,39 @@ const ActiveRoomSession = ({ user, roomData, onEnd }) => {
 
     const handleAutoFinish = useCallback(async (finalAnswers) => {
         if (evaluating) return;
+        
+        if (isMonitoringHost) {
+            onEnd();
+            return;
+        }
+
         setEvaluating(true);
         try {
             await fetch(`${API_URL}/evaluate-batch`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    userId: user.id,
-                    username: user.name,
-                    answers: finalAnswers,
-                    domains: ["Room Assessment"],
-                    sessionId: roomData.roomCode,
-                    type: settings.type,
-                    difficulty: settings.difficulty
+                    userId: user.id, username: user.name,
+                    answers: finalAnswers, domains: ["Room Assessment"],
+                    sessionId: roomData.roomCode, type: settings.type, difficulty: settings.difficulty
                 })
             });
             onEnd();
-        } catch (e) { console.error("Final Sync Failed", e); onEnd(); }
-    }, [user, roomData, settings, evaluating, onEnd]);
+        } catch (e) { onEnd(); }
+    }, [user, roomData, settings, evaluating, onEnd, isMonitoringHost]);
 
     useEffect(() => {
         const timer = setInterval(() => {
             if (!startTime) return;
-
             const now = new Date().getTime();
             const start = new Date(startTime).getTime();
-            if (isNaN(start)) return;
-
-            const totalElapsedSeconds = Math.floor((now - start) / 1000);
-            const safeElapsed = Math.max(0, totalElapsedSeconds);
-            
-            // UPDATED: Use STEP_TIME instead of hardcoded 30
+            const safeElapsed = Math.max(0, Math.floor((now - start) / 1000));
             const step = Math.floor(safeElapsed / STEP_TIME);
             const remaining = STEP_TIME - (safeElapsed % STEP_TIME);
 
             if (step >= questions.length) {
                 clearInterval(timer);
-                const finalSet = [...answers, {
+                const finalSet = isMonitoringHost ? [] : [...answers, {
                     challenge: questions[currentStep]?.challenge,
                     answer: settings.type === 'multi' ? selectedRef.current : textRef.current,
                     correctAnswer: questions[currentStep]?.correctAnswer || ""
@@ -1086,11 +1075,13 @@ const ActiveRoomSession = ({ user, roomData, onEnd }) => {
                 handleAutoFinish(finalSet);
             } else {
                 if (step !== currentStep) {
-                    setAnswers(prev => [...prev, {
-                        challenge: questions[currentStep]?.challenge,
-                        answer: settings.type === 'multi' ? selectedRef.current : textRef.current,
-                        correctAnswer: questions[currentStep]?.correctAnswer || ""
-                    }]);
+                    if (!isMonitoringHost) {
+                        setAnswers(prev => [...prev, {
+                            challenge: questions[currentStep]?.challenge,
+                            answer: settings.type === 'multi' ? selectedRef.current : textRef.current,
+                            correctAnswer: questions[currentStep]?.correctAnswer || ""
+                        }]);
+                    }
                     setCurrentStep(step);
                     setSelectedOption("");
                     setTextInput("");
@@ -1098,24 +1089,22 @@ const ActiveRoomSession = ({ user, roomData, onEnd }) => {
                 setTimeLeft(remaining);
             }
         }, 1000);
-
         return () => clearInterval(timer);
-    }, [startTime, currentStep, questions, settings.type, answers, handleAutoFinish, STEP_TIME]); // Added STEP_TIME to deps
+    }, [startTime, currentStep, questions, settings, answers, handleAutoFinish, STEP_TIME, isMonitoringHost]);
 
-    if (!startTime) {
-        return (
-            <div className="text-center py-5 mt-5">
-                <Loader2 className="spinner-border text-primary mb-3" />
-                <p className="fw-bold opacity-50 uppercase tracking-widest">Initialising Neural Start Time...</p>
-            </div>
-        );
-    }
+    if (!startTime) return <div className="text-center py-5 mt-5 text-white"><Loader2 className="animate-spin mb-3" /> Initializing...</div>;
 
     const currentQ = questions[currentStep];
 
     return (
         <div className="mx-auto mt-5" style={{ maxWidth: '850px' }}>
             <div className="p-4 p-md-5" style={{ ...glassStyle, background: 'rgba(2, 6, 23, 0.8)' }}>
+                {isMonitoringHost && (
+                    <div className="mb-4 p-3 rounded-4 bg-primary bg-opacity-10 border border-primary border-opacity-30 text-center">
+                        <span className="text-primary fw-black uppercase tracking-widest small">Neural Proctoring Mode: Active</span>
+                    </div>
+                )}
+                
                 <div className="d-flex justify-content-between mb-4 align-items-center">
                     <span className="text-primary fw-bold tracking-widest uppercase">Question {currentStep + 1} / {questions.length}</span>
                     <div className="d-flex align-items-center gap-2 px-3 py-1 rounded-pill bg-danger bg-opacity-10 text-danger border border-danger border-opacity-20">
@@ -1124,43 +1113,58 @@ const ActiveRoomSession = ({ user, roomData, onEnd }) => {
                 </div>
 
                 <div className="mb-4 w-100" style={{ background: 'rgba(255,255,255,0.05)', height: '4px', borderRadius: '2px' }}>
-                    {/* UPDATED: Width calculation now uses STEP_TIME */}
                     <div className="timer-bar" style={{ width: `${(timeLeft / STEP_TIME) * 100}%`, transition: 'width 1s linear' }}></div>
                 </div>
 
                 {evaluating ? (
-                    <div className="text-center py-5"><Loader2 className="spinner-border text-primary mb-3" /><p className="fw-bold opacity-50 uppercase">Syncing Results...</p></div>
+                    <div className="text-center py-5 text-white"><Loader2 className="animate-spin mb-3" /> Processing Global Results...</div>
                 ) : (
                     <>
-                        <h2 className={`fw-bold mb-5 challenge-text ${settings.type === 'adaptive' ? 'fs-4 lh-sm' : ''}`}>
+                        <h2 className="fw-bold mb-5 challenge-text text-white">
                             {currentQ?.challenge}
                         </h2>
                         
                         {settings.type === 'multi' ? (
                             <div className="row g-3">
-                                {currentQ?.options?.map((opt, i) => (
-                                    <div className="col-12 col-md-6" key={i}>
-                                        <button 
-                                            className={`btn w-100 py-3 rounded-4 fw-bold text-start px-4 transition-all ${selectedOption === opt ? 'btn-primary shadow-lg' : 'btn-outline-light opacity-50'}`}
-                                            onClick={() => setSelectedOption(opt)}
-                                        >
-                                            {opt}
-                                        </button>
-                                    </div>
-                                ))}
+                                {currentQ?.options?.map((opt, i) => {
+                                    const isCorrect = isMonitoringHost && opt === currentQ.correctAnswer;
+                                    return (
+                                        <div className="col-12 col-md-6" key={i}>
+                                            <button 
+                                                className={`btn w-100 py-3 rounded-4 fw-bold text-start px-4 transition-all ${isCorrect ? 'btn-success border-success' : selectedOption === opt ? 'btn-primary' : 'btn-outline-light opacity-50'}`}
+                                                disabled={isMonitoringHost}
+                                                onClick={() => setSelectedOption(opt)}
+                                            >
+                                                <div className="d-flex justify-content-between align-items-center">
+                                                    <span>{opt}</span>
+                                                    {isCorrect && <span className="badge bg-white text-success rounded-pill px-2 py-1" style={{fontSize: '0.65rem'}}>ANSWER</span>}
+                                                </div>
+                                            </button>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         ) : (
-                            <textarea 
-                                className="custom-input fs-5" 
-                                style={{ minHeight: '200px' }} 
-                                placeholder="Type your neural response..."
-                                value={textInput}
-                                onChange={(e) => setTextInput(e.target.value)}
-                            />
+                            <div>
+                                <textarea 
+                                    className="custom-input fs-5 mb-4" 
+                                    style={{ minHeight: '180px' }} 
+                                    placeholder={isMonitoringHost ? "Observing Operative Inputs..." : "Type your response..."}
+                                    value={textInput}
+                                    disabled={isMonitoringHost}
+                                    onChange={(e) => setTextInput(e.target.value)}
+                                />
+                                {isMonitoringHost && currentQ.correctAnswer && (
+                                    <div className="p-4 rounded-4 bg-success bg-opacity-10 border border-success border-opacity-20">
+                                        <span className="text-success fw-black small uppercase tracking-widest d-block mb-1">Target Keyphrase:</span>
+                                        <p className="text-white small mb-0">{currentQ.correctAnswer}</p>
+                                    </div>
+                                )}
+                            </div>
                         )}
 
-                        <div className="mt-5 text-center opacity-40 small uppercase tracking-widest fw-bold">
-                            Auto-advancing in {timeLeft} seconds...
+                        <div className="mt-5 text-center opacity-40 small uppercase tracking-widest fw-bold text-white">
+                            {isMonitoringHost ? "SYSTEM MONITORING IN PROGRESS" : `AUTO-SYNC IN ${timeLeft}s`}
                         </div>
                     </>
                 )}

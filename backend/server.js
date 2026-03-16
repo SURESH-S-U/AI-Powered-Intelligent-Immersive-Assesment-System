@@ -39,10 +39,11 @@ const RoomSchema = new mongoose.Schema({
     creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, 
     creatorName: String, 
     settings: {
-        type: { type: String }, // CORRECTED: This tells Mongoose the field name is "type"
+        type: { type: String },
         qCount: { type: Number },
         difficulty: { type: String },
-        timer: { type: Number }
+        timer: { type: Number },
+        hostAttendance: { type: String, default: 'attend' } // ADDED THIS
     }, 
     questions: Array, 
     status: { type: String, default: 'waiting' }, 
@@ -257,6 +258,13 @@ app.post("/evaluate-batch", async (req, res) => {
             suggestion = data.suggestion || "Continue practicing these scenarios.";
         }
 
+        // --- NEW: Perfect Score Appreciation Logic ---
+        const totalScoreObtained = evaluatedResults.reduce((acc, curr) => acc + curr.score, 0);
+        const maxPossibleScore = answers.length * 10;
+        if (totalScoreObtained === maxPossibleScore && maxPossibleScore > 0) {
+            suggestion = "Outstanding performance! You have achieved perfect neural synchronization. Mastery confirmed.";
+        }
+
         const savePromises = evaluatedResults.map((resItem, idx) => {
             return new Assessment({ 
                 userId, username, 
@@ -267,7 +275,7 @@ app.post("/evaluate-batch", async (req, res) => {
                 sessionId, type, difficulty, 
                 score: resItem.score, 
                 feedback: resItem.feedback,
-                suggestion: suggestion
+                suggestion: suggestion // Now contains appreciation if perfect
             }).save();
         });
 
@@ -286,7 +294,9 @@ app.get("/room-results/:roomCode", async (req, res) => {
 
         const allResults = await Assessment.find({ sessionId: roomCode });
         const isAdmin = room.creatorId.toString() === userId;
+        const hostAttendance = room.settings.hostAttendance; // 'attend' or 'monitor'
 
+        // Group by User
         const userStats = {};
         allResults.forEach(r => { 
             const uId = r.userId.toString();
@@ -295,18 +305,43 @@ app.get("/room-results/:roomCode", async (req, res) => {
             userStats[uId].count += 1; 
         });
 
-        const leaderboard = Object.values(userStats).map(u => ({ 
+        // 1. Create Leaderboard Array
+        let leaderboard = Object.values(userStats).map(u => ({ 
             username: u.username, 
             userId: u.userId, 
             score: Math.round((u.score / (u.count * 10)) * 100) 
         })).sort((a,b) => b.score - a.score);
 
-        // Security Update: Filter reports so only Admin sees all, or User sees only their own
+        // 2. TYPE 2 Logic: If Host selected 'monitor', exclude them from the leaderboard for everyone
+        if (hostAttendance === 'monitor') {
+            leaderboard = leaderboard.filter(entry => entry.userId !== room.creatorId.toString());
+        } 
+        // Note: In Type 1 ('attend'), the host will naturally be in allResults, so they remain in leaderboard.
+
+        // 3. Dense Ranking Logic (#1, #1, #2, #2, #3)
+        let currentRank = 0;
+        let lastScore = -1;
+        leaderboard = leaderboard.map((entry) => {
+            if (entry.score !== lastScore) {
+                currentRank++;
+                lastScore = entry.score;
+            }
+            return { ...entry, rank: currentRank };
+        });
+
+        // 4. Report Visibility: Admin sees all, Participants see only their own
         const reports = isAdmin 
             ? allResults 
             : allResults.filter(r => r.userId.toString() === userId);
         
-        res.json({ leaderboard, reports, isAdmin });
+        res.json({ 
+            success: true,
+            leaderboard, 
+            reports, 
+            isAdmin, 
+            creatorId: room.creatorId,
+            hostAttendance: hostAttendance
+        });
     } catch (e) { res.status(500).json({ error: "Error fetching results" }); }
 });
 
