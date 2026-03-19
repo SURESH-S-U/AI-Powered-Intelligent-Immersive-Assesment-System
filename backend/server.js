@@ -216,23 +216,21 @@ app.get("/room/:code", async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Error" }); }
 });
 
-// INDIVIDUAL ASSESSMENT: Added "concise" prompt
+
+// --- UPDATED: Generate Assessment ---
 app.post("/generate-assessment", async (req, res) => {
     const { type, domains, limit, difficulty } = req.body;
     try {
         let prompt = "";
-        
-        // Decide source material
-        const sourceMaterial = (type === 'general') 
-            ? "Global General Knowledge (Science, History, Tech, Geography, and Arts)" 
-            : domains.join(", ");
+        const sourceMaterial = (type === 'general') ? "General Knowledge" : domains.join(", ");
 
         if (type === 'adaptive') {
-            prompt = `Generate ${limit} ${difficulty} situational scenarios for: ${sourceMaterial}. 
-            CRITICAL: Each scenario must be LESS THAN 25 WORDS. 
-            Format: JSON object with a "questions" array. Each item: {"challenge": "scenario text"}.`;
+            // Adaptive is now text-based scenarios, strictly < 25 words
+            prompt = `Generate ${limit} ${difficulty} level text-based situational challenges about: ${sourceMaterial}. 
+            CRITICAL: Each challenge MUST be a single question or scenario LESS THAN 25 WORDS.
+            Format: JSON object with a "questions" array. Each item: {"challenge": "string"}`;
         } else {
-            // MCQ or General Knowledge
+            // MCQ and General remain MCQs
             prompt = `Generate ${limit} ${difficulty} level MCQ questions based on: ${sourceMaterial}. 
             Format: Return a JSON object with a "questions" array. 
             Each question must have: "challenge", "options" (array of 4 strings), "correctAnswer", and "explanation".`;
@@ -244,42 +242,64 @@ app.post("/generate-assessment", async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Generation Error" }); }
 });
 
-// EVALUATION BATCH
+// --- UPDATED: evaluate-single for Adaptive logic ---
+app.post("/evaluate-single", async (req, res) => {
+    const { challenge, answer, difficulty } = req.body;
+    try {
+        const prompt = `Challenge: "${challenge}"
+        User Answer: "${answer}"
+        Difficulty Level: ${difficulty}
+        
+        CRITICAL INSTRUCTION: If the user answer is random text, keyboard mashing, unrelated to the question, or gibberish, you MUST score it 0.
+        
+        Task: Evaluate the response for conceptual accuracy.
+        Return ONLY a JSON object: 
+        {
+          "score": number (0-10), 
+          "feedback": "A concise explanation of how the answer could be improved or what the ideal response would include."
+        }`;
+        
+        const aiResponse = await callGitHubAI(prompt);
+        const data = cleanJSON(aiResponse);
+        res.json(data || { score: 0, feedback: "Neural sync interrupted." });
+    } catch (e) { res.status(500).json({ error: "Single Eval Error" }); }
+});
+
+// --- UPDATED: evaluate-batch to save difficulty as 'Adaptive' ---
 app.post("/evaluate-batch", async (req, res) => {
     const { userId, username, answers, domains, sessionId, type, difficulty } = req.body;
     try {
         let evaluatedResults = [];
         let suggestion = "";
+        
+        // Ensure difficulty is labeled correctly for Adaptive types
+        const finalDifficulty = type === 'adaptive' ? "Adaptive" : difficulty;
 
         if (type === 'adaptive') {
-            const evalPrompt = `Evaluate situational responses: ${JSON.stringify(answers)}. 
-            Score each 0-10 based on accuracy and logic. Provide feedback and a "suggestion" string.
-            Format: {"results": [{"score": 0, "feedback": ""}], "suggestion": "topics"}`;
-            const aiResponse = await callGitHubAI(evalPrompt);
-            const data = cleanJSON(aiResponse);
-            evaluatedResults = data.results || [];
-            suggestion = data.suggestion || "Continue refining situational analysis.";
+            evaluatedResults = answers.map(ans => ({
+                score: ans.score || 0,
+                challenge: ans.challenge,
+                feedback: ans.feedback || "No feedback generated.",
+                answer: ans.answer
+            }));
         } else {
-            // MCQ and General Knowledge evaluation
             evaluatedResults = answers.map(ans => {
-                const isCorrect = ans.answer?.trim() === ans.correctAnswer?.trim();
+                const isCorrect = ans.answer?.trim().toLowerCase() === ans.correctAnswer?.trim().toLowerCase();
                 return {
                     score: isCorrect ? 10 : 0,
-                    feedback: isCorrect ? "Correct answer." : `Incorrect. The correct answer was: ${ans.correctAnswer}`
+                    challenge: ans.challenge,
+                    feedback: isCorrect ? "Neural synchronization successful." : `Sync mismatch. Target: ${ans.correctAnswer}`,
+                    answer: ans.answer,
+                    correctAnswer: ans.correctAnswer
                 };
             });
-            const aiReviewPrompt = `User answered these questions: ${JSON.stringify(answers)}. Analyze mistakes and suggest 3 topics to study. Return JSON: {"suggestion": "string"}`;
-            const aiResponse = await callGitHubAI(aiReviewPrompt);
-            const data = cleanJSON(aiResponse);
-            suggestion = data?.suggestion || "Review core concepts for better accuracy.";
         }
+        
+        const aiReviewPrompt = `User responses: ${JSON.stringify(answers)}. Provide 3 focus points for improvement. Return JSON: {"suggestion": "string"}`;
+        const aiResponse = await callGitHubAI(aiReviewPrompt);
+        const data = cleanJSON(aiResponse);
+        suggestion = data?.suggestion || "Maintain focus on core conceptual clarity.";
 
-        const total = evaluatedResults.reduce((acc, curr) => acc + curr.score, 0);
-        if (total === (answers.length * 10) && total > 0) {
-            suggestion = "Outstanding! Perfect neural synchronization achieved. Mastery confirmed.";
-        }
-
-        // Save History
         const savePromises = evaluatedResults.map((resItem, idx) => {
             return new Assessment({ 
                 userId, username, 
@@ -287,7 +307,8 @@ app.post("/evaluate-batch", async (req, res) => {
                 challenge: answers[idx].challenge, 
                 answer: answers[idx].answer, 
                 correctAnswer: answers[idx].correctAnswer || "",
-                sessionId, type, difficulty, 
+                sessionId, type, 
+                difficulty: finalDifficulty, // Saves as "Adaptive"
                 score: resItem.score, 
                 feedback: resItem.feedback,
                 suggestion: suggestion 

@@ -7,7 +7,7 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { 
     LayoutDashboard, BookOpen, BarChart3, LogOut, Brain, Zap, 
     Loader2, X, Plus, ArrowRight, Target, Globe, TrendingUp, 
-    Activity, ShieldCheck, Lock, Mail, User as UserIcon, Timer, TimerOff, Calendar, Menu, Users, Trophy,
+    Activity, ShieldCheck, Lock, Mail, User as UserIcon, Timer, Calendar, Menu, Users, Trophy,
     RotateCw 
 } from 'lucide-react';
 
@@ -364,16 +364,25 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
     const [session, setSession] = useState(null);
     const [qCount, setQCount] = useState(3);
     const [customCount, setCustomCount] = useState("");
-    const [difficulty, setDifficulty] = useState("Beginner");
-    const [isTimed, setIsTimed] = useState(false);
-    const handleStart = (type) => { if (type !== 'general' && domains.length === 0) return alert("Select at least one domain."); setSession(type); };
+    const [timerValue, setTimerValue] = useState(30);
+
+    const handleStart = (type) => { 
+        if (type !== 'general' && domains.length === 0) return alert("Select at least one domain."); 
+        setSession(type); 
+    };
     const finalCount = customCount !== "" ? parseInt(customCount) : qCount;
 
-    if (session) return <ActiveSession user={user} domains={domains} type={session} limit={finalCount} isTimed={isTimed} difficulty={difficulty} onEnd={() => { setSession(null); refreshHistory(); }} />;
+    if (session) return (
+        <ActiveSession 
+            user={user} domains={domains} type={session} limit={finalCount} 
+            timerValue={timerValue} 
+            onEnd={() => { setSession(null); refreshHistory(); }} 
+        />
+    );
 
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <div className="mb-4"><h1 className="fw-black">Assessment Center</h1><p className="opacity-50">Configure parameters, difficulty, and timing mode.</p></div>
+            <div className="mb-4"><h1 className="fw-black">Assessment Center</h1><p className="opacity-50">Configure your neural synchronization protocol.</p></div>
             <div className="p-3 p-md-4 mb-4" style={glassStyle}>
                 <div className='row mb-4'><div className="col-12"> 
                     <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Set Knowledge Domains</h6>
@@ -384,7 +393,7 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
                     <div className="d-flex flex-wrap gap-2">{domains.map(d => (<span key={d} className="domain-tag">{d} <X size={14} style={{ cursor: 'pointer' }} onClick={() => setDomains(domains.filter(i => i !== d))} /></span>))}</div>
                 </div></div>
                 <div className="row g-4 align-items-end">
-                    <div className="col-12 col-md-5">
+                    <div className="col-12 col-md-6">
                         <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Question Quantity</h6>
                         <div className="d-flex gap-2">
                             <select className={`custom-input ${customCount !== "" ? 'opacity-25' : ''}`} value={qCount} style={{width: '60%'}} disabled={customCount !== ""} onChange={(e) => setQCount(parseInt(e.target.value))}>
@@ -393,24 +402,23 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
                             <input type="text" inputMode="numeric" className="custom-input no-spinners" placeholder="Custom" style={{width: '40%'}} value={customCount} onChange={(e) => setCustomCount(e.target.value.replace(/\D/g, ""))} />
                         </div>
                     </div>
-                    <div className="col-12 col-md-5">
-                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Difficulty Selection</h6>
-                        <select className="custom-input" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-                            <option value="Beginner" style={{background: '#020617'}}>Beginner</option>
-                            <option value="Intermediate" style={{background: '#020617'}}>Intermediate</option>
-                            <option value="Advanced" style={{background: '#020617'}}>Advanced</option>
+                    <div className="col-12 col-md-6">
+                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest" style={{fontSize: '0.9rem'}}>Timer Selection</h6>
+                        <select className="custom-input" value={timerValue} onChange={(e) => setTimerValue(parseInt(e.target.value))}>
+                            <option value="0" style={{ background: '#020617' }}>Timer Off</option>
+                            <option value="15" style={{ background: '#020617' }}>15 Seconds</option>
+                            <option value="30" style={{ background: '#020617' }}>30 Seconds</option>
+                            <option value="60" style={{ background: '#020617' }}>1 Minute</option>
+                            <option value="120" style={{ background: '#020617' }}>2 Minutes</option>
+                            <option value="180" style={{ background: '#020617' }}>3 Minutes</option>
                         </select>
-                    </div>
-                    <div className="col-12 col-md-2 text-center">
-                        <h6 className="text-primary fw-bold mb-3 uppercase tracking-widest text-start text-md-center" style={{fontSize: '0.9rem'}}>Timer</h6>
-                        <div className={`timer-btn-toggle ${isTimed ? 'active' : ''}`} onClick={() => setIsTimed(!isTimed)}>{isTimed ? <Timer size={22}/> : <TimerOff size={22}/>}</div>
                     </div>
                 </div>
             </div>
             <div className="row g-3 g-md-4">
                 {[
-                    { id: 'adaptive', title: 'Adaptive Scenario', desc: 'Situational text-based reasoning.', icon: <Zap/> }, 
-                    { id: 'multi', title: 'Multiple Choice', desc: 'Selection-based knowledge verify.', icon: <Target/> }, 
+                    { id: 'adaptive', title: 'Adaptive Scenario', desc: 'Text-based logic that evolves difficulty.', icon: <Zap/> }, 
+                    { id: 'multi', title: 'Multiple Choice', desc: 'Standard MCQ assessment protocol.', icon: <Target/> }, 
                     { id: 'general', title: 'General Knowledge', desc: 'Random high-level trivia.', icon: <Globe/> }
                 ].map(p => (
                     <div className="col-12 col-md-4" key={p.id}><div className="protocol-card p-4 p-md-5 h-100" style={glassStyle} onClick={() => handleStart(p.id)}>
@@ -425,180 +433,202 @@ const AssessmentCenter = ({ user, refreshHistory }) => {
     );
 };
 
-const ActiveSession = ({ user, domains, type, limit, isTimed, difficulty, onEnd, questions: predefinedQuestions = null, sessionId: existingSessionId = null }) => {
-    const [questions, setQuestions] = useState(predefinedQuestions || []);
+const ActiveSession = ({ user, domains, type, limit, timerValue, onEnd }) => {
+    const [questions, setQuestions] = useState([]);
+    const [adaptivePool, setAdaptivePool] = useState({ Beginner: [], Intermediate: [], Advanced: [] });
     const [currentStep, setCurrentStep] = useState(0);
+    const [difficulty, setDifficulty] = useState("Beginner");
     const [answers, setAnswers] = useState([]);
     const [currentInput, setCurrentInput] = useState("");
     const [results, setResults] = useState(null);
     const [suggestion, setSuggestion] = useState("");
-    const [loading, setLoading] = useState(!predefinedQuestions);
+    const [loading, setLoading] = useState(true);
     const [evaluating, setEvaluating] = useState(false);
-    const [sessionId] = useState(existingSessionId || `session_${Date.now()}`);
-    const [timeLeft, setTimeLeft] = useState(30);
+    const [stepProcessing, setStepProcessing] = useState(false);
+    const [timeLeft, setTimeLeft] = useState(timerValue);
+    
+    const sessionId = useRef(`session_${Date.now()}`).current;
+    const inputRef = useRef("");
     const timerRef = useRef(null);
 
+    const isAdaptive = type === 'adaptive';
+    const hasTimer = timerValue > 0;
+
+    useEffect(() => { inputRef.current = currentInput; }, [currentInput]);
+
     const fetchAllQuestions = useCallback(async () => {
-        if (predefinedQuestions) return;
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/generate-assessment`, { 
-                method: "POST", 
-                headers: { "Content-Type": "application/json" }, 
-                body: JSON.stringify({ type, difficulty, domains, limit }) 
-            });
-            const data = await res.json();
-            setQuestions(data.questions || []);
-        } catch (e) { alert("Core Link Failed"); onEnd(); }
+            if (isAdaptive) {
+                const pools = await Promise.all(['Beginner', 'Intermediate', 'Advanced'].map(lvl => 
+                    fetch(`${API_URL}/generate-assessment`, { 
+                        method: "POST", headers: { "Content-Type": "application/json" }, 
+                        body: JSON.stringify({ type: 'adaptive', difficulty: lvl, domains, limit }) 
+                    }).then(r => r.json())
+                ));
+                setAdaptivePool({ Beginner: pools[0].questions, Intermediate: pools[1].questions, Advanced: pools[2].questions });
+                setQuestions([pools[0].questions[0]]);
+            } else {
+                const res = await fetch(`${API_URL}/generate-assessment`, { 
+                    method: "POST", headers: { "Content-Type": "application/json" }, 
+                    body: JSON.stringify({ type, domains, limit, difficulty: "Beginner" }) 
+                });
+                const data = await res.json();
+                setQuestions(data.questions || []);
+            }
+        } catch (e) { onEnd(); }
         finally { setLoading(false); }
-    }, [difficulty, domains, type, limit, onEnd, predefinedQuestions]);
+    }, [domains, type, limit, onEnd, isAdaptive]);
 
     useEffect(() => { fetchAllQuestions(); }, [fetchAllQuestions]);
 
-    const submitBatch = useCallback(async (finalAnswers) => {
-        setEvaluating(true);
-        try {
-            const res = await fetch(`${API_URL}/evaluate-batch`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    userId: user.id, username: user.name, 
-                    answers: finalAnswers, domains, sessionId, type, difficulty 
-                })
-            });
-            const data = await res.json();
-            setResults(data.results);
-            setSuggestion(data.suggestion);
-        } catch (e) { alert("Evaluation error."); }
-        finally { setEvaluating(false); }
-    }, [user.id, user.name, domains, sessionId, type, difficulty]);
+    const handleNext = useCallback(async (autoAnswer = null) => {
+        const finalAnswer = autoAnswer || inputRef.current || "No response provided";
+        const currentQ = questions[currentStep];
+        let scoreForStep = 0;
+        let feedbackForStep = "";
 
-    const handleNext = useCallback((autoAnswer = null) => {
-        const finalAnswer = autoAnswer || currentInput || "No response provided";
+        if (isAdaptive && !autoAnswer) {
+            setStepProcessing(true);
+            try {
+                const evalRes = await fetch(`${API_URL}/evaluate-single`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ challenge: currentQ.challenge, answer: finalAnswer, difficulty })
+                });
+                const evalData = await evalRes.json();
+                scoreForStep = evalData.score;
+                feedbackForStep = evalData.feedback;
+            } catch (e) { feedbackForStep = "Neural sync timeout."; }
+            setStepProcessing(false);
+        } else if (!isAdaptive) {
+            scoreForStep = finalAnswer === currentQ.correctAnswer ? 10 : 0;
+            feedbackForStep = scoreForStep === 10 ? "Neural synchronization successful." : `Incorrect response.`;
+        }
+
         const updatedAnswers = [...answers, { 
-            challenge: questions[currentStep]?.challenge, 
-            answer: finalAnswer,
-            correctAnswer: questions[currentStep]?.correctAnswer || "" 
+            challenge: currentQ?.challenge, answer: finalAnswer,
+            correctAnswer: currentQ?.correctAnswer || "", score: scoreForStep, feedback: feedbackForStep
         }];
         setAnswers(updatedAnswers);
         setCurrentInput("");
-        if (currentStep < questions.length - 1) { 
+        inputRef.current = "";
+
+        if (currentStep < limit - 1) {
+            if (isAdaptive) {
+                let nextDiff = difficulty;
+                if (scoreForStep >= 7) nextDiff = difficulty === "Beginner" ? "Intermediate" : "Advanced";
+                else if (scoreForStep < 4) nextDiff = difficulty === "Advanced" ? "Intermediate" : "Beginner";
+                setDifficulty(nextDiff);
+                const used = questions.map(q => q.challenge);
+                const nextQ = adaptivePool[nextDiff].find(q => !used.includes(q.challenge)) || adaptivePool["Beginner"][0];
+                setQuestions(prev => [...prev, nextQ]);
+            }
             setCurrentStep(prev => prev + 1); 
-            setTimeLeft(30); 
+            if (hasTimer) setTimeLeft(timerValue); 
         } else { 
-            clearInterval(timerRef.current); 
-            submitBatch(updatedAnswers); 
+            clearInterval(timerRef.current);
+            setEvaluating(true);
+            try {
+                const res = await fetch(`${API_URL}/evaluate-batch`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: user.id, username: user.name, answers: updatedAnswers, domains, sessionId, type, difficulty })
+                });
+                const data = await res.json();
+                setResults(data.results);
+                setSuggestion(data.suggestion);
+            } catch (e) { onEnd(); }
+            finally { setEvaluating(false); }
         }
-    }, [answers, questions, currentStep, currentInput, submitBatch]);
+    }, [answers, questions, currentStep, isAdaptive, difficulty, adaptivePool, limit, timerValue, user, domains, sessionId, type, hasTimer, onEnd]);
 
     useEffect(() => {
-        if (isTimed && !loading && !evaluating && !results && questions.length > 0) {
+        if (!loading && !evaluating && !results && questions.length > 0 && hasTimer) {
             timerRef.current = setInterval(() => {
                 setTimeLeft((prev) => {
-                    if (prev <= 1) { handleNext("Time Expired"); return 30; }
+                    if (prev <= 1) { handleNext("Time Expired"); return timerValue; }
                     return prev - 1;
                 });
             }, 1000);
         }
         return () => clearInterval(timerRef.current);
-    }, [loading, evaluating, results, questions.length, isTimed, handleNext]);
+    }, [loading, evaluating, results, questions.length, hasTimer, timerValue, handleNext]);
 
-    if (loading) return <div className="text-center py-5"><Loader2 className="spinner-border text-primary mb-3 animate-spin" /><p className="fw-bold opacity-50 uppercase tracking-widest text-white">Synchronizing Neural Link...</p></div>;
+    if (loading) return <div className="text-center py-5"><Loader2 className="spinner-border text-primary mb-3 animate-spin" /><p className="fw-bold opacity-50 uppercase tracking-widest text-white">Initialising Neural Link...</p></div>;
 
-    const isAdaptive = type === 'adaptive';
-    const isGeneral = type === 'general';
+    const overallAccuracy = results ? Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / (limit * 10)) * 100) : 0;
 
     return (
         <div className="mx-auto" style={{ maxWidth: '850px' }}>
             <div className="p-3 p-md-5" style={{...glassStyle, background: 'rgba(2, 6, 23, 0.8)'}}>
                 <div className="d-flex justify-content-between mb-4 align-items-center">
-                    <div className="d-flex align-items-center gap-2">
-                        <span className="text-primary fw-bold small tracking-widest uppercase">
-                            {results ? 'Neural Diagnostics' : `${isGeneral ? 'General Knowledge' : 'Knowledge Link'} Q ${currentStep + 1}/${questions.length}`}
-                        </span>
-                        <span className="badge rounded-pill bg-primary bg-opacity-10 text-primary border border-primary border-opacity-20 px-2" style={{fontSize: '0.6rem'}}>{difficulty.toUpperCase()}</span>
+                    <span className="text-primary fw-bold small tracking-widest uppercase">
+                        {results ? 'Neural Diagnostics' : `Link Status: Q ${currentStep + 1}/${limit}`}
+                    </span>
+                    <div className="d-flex align-items-center gap-3">
+                        {!results && hasTimer && <div className="fw-black text-danger d-flex align-items-center gap-2" style={{fontFamily:'monospace', fontSize:'1.2rem'}}><Timer size={20}/> {timeLeft}s</div>}
+                        <X onClick={onEnd} style={{ cursor: 'pointer' }} className="text-white opacity-50" />
                     </div>
-                    <X onClick={onEnd} style={{ cursor: 'pointer' }} className="text-white opacity-50" />
                 </div>
 
                 {evaluating ? (
-                    <div className="text-center py-5 text-white">
-                        <Loader2 className="spinner-border text-primary mb-3 animate-spin" />
-                        <p className="fw-bold opacity-50 uppercase tracking-widest">ANALYZING DATA...</p>
-                    </div>
+                    <div className="text-center py-5 text-white"><Loader2 className="animate-spin" size={40}/><p className="fw-bold opacity-50 uppercase tracking-widest mt-3">FINALISING DIAGNOSTICS...</p></div>
                 ) : results ? (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                        <div className="text-center mb-5">
-                            <h6 className="text-primary fw-bold tracking-widest uppercase mb-2">Assessment Concluded</h6>
-                            <h1 className="display-3 fw-black mb-2 text-gradient">
-                                {isAdaptive 
-                                    ? `${Math.round((results.reduce((acc, curr) => acc + curr.score, 0) / (questions.length * 10)) * 100)}%`
-                                    : `${results.filter(r => r.score >= 8).length} / ${questions.length}`
-                                }
-                            </h1>
-                            <p className="opacity-50 text-white small">Overall {isAdaptive ? 'Accuracy' : 'Correct Answers'} achieved.</p>
+                        <div className="d-flex justify-content-between align-items-center mb-4 border-bottom border-white border-opacity-5 pb-3">
+                            <h5 className="text-primary fw-black uppercase tracking-widest mb-0" style={{ fontSize: '0.8rem' }}>Personal Diagnostic Analysis</h5>
+                            <div className="fw-black text-white" style={{ fontSize: '1.2rem' }}>
+                                {isAdaptive ? `OVERALL ACCURACY: ${overallAccuracy}%` : `SCORE: ${results.filter(r => r.score >= 8).length} / ${limit}`}
+                            </div>
                         </div>
 
                         <div className="d-flex flex-column gap-4 mb-5">
                             {results.map((report, idx) => (
-                                <div key={idx} className="p-4 rounded-4 border border-white border-opacity-5 bg-black bg-opacity-40 text-white">
+                                <div key={idx} className="p-4 rounded-4 border border-white border-opacity-5 bg-dark shadow-lg text-white">
                                     <div className="d-flex justify-content-between mb-3 align-items-start">
                                         <span className="badge bg-dark bg-opacity-10 text-primary border border-primary border-opacity-20 px-3">Challenge {idx + 1}</span>
-                                        <span className={`fw-black uppercase tracking-widest ${report.score >= 8 ? 'text-success' : (report.score >= 5 ? 'text-primary' : 'text-danger')}`} style={{ fontSize: '0.75rem' }}>
+                                        <span className={`fw-black uppercase tracking-widest ${report.score >= 8 ? 'text-success' : (report.score >= 5 ? 'text-warning' : 'text-danger')}`} style={{ fontSize: '0.75rem' }}>
                                             {isAdaptive ? `${report.score * 10}% Accuracy` : (report.score >= 8 ? 'CORRECT' : 'INCORRECT')}
                                         </span>
                                     </div>
-                                    <h6 className="fw-bold mb-3" style={{ lineHeight: '1.4' }}>{report.challenge}</h6>
-                                    
-                                    <div className="p-3 rounded-3 bg-dark bg-opacity-5 border border-white border-opacity-5 mb-3">
-                                        <span className="text-primary opacity-50 d-block mb-1 uppercase fw-bold" style={{fontSize:'0.6rem'}}>Your Input :</span>
+                                    <h6 className="fw-bold mb-3" style={{ fontSize: '0.95rem' }}>{report.challenge}</h6>
+                                    <div className="p-3 rounded-3 bg-black bg-opacity-20 border border-white border-opacity-5 mb-3">
+                                        <span className="text-xxs uppercase opacity-50 d-block mb-1">Your Input :</span>
                                         <div className="small opacity-90">{answers[idx]?.answer || "N/A"}</div>
                                     </div>
-
                                     <div className="p-3 rounded-3 border border-primary border-opacity-20 bg-primary bg-opacity-10">
-                                        <span className="text-primary d-block mb-1 fw-bold uppercase" style={{fontSize:'0.6rem'}}>AI Analysis</span>
+                                        <span className="text-xxs uppercase text-primary d-block mb-1 fw-bold">{isAdaptive ? "How the answer could be" : "Neural Feedback"}</span>
                                         <div className="small opacity-100">{report.feedback}</div>
                                     </div>
                                 </div>
                             ))}
 
                             {suggestion && (
-                                <div className="p-4 rounded-4 shadow-lg" style={{ background: 'rgba(255, 193, 7, 0.1)', border: '2px solid #ffc107' }}>
+                                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-4 rounded-4 shadow-lg mt-2" style={{ background: 'rgba(255, 193, 7, 0.1)', border: '2px solid #ffc107' }}>
                                     <div className="d-flex align-items-center gap-2 mb-2">
                                         <Brain size={20} style={{ color: '#ffc107' }} />
                                         <span className="text-xs uppercase fw-black tracking-widest" style={{ color: '#ffc107' }}>Suggestion :</span>
                                     </div>
-                                    <p className="small text-white opacity-90 mb-0 fw-bold italic">{suggestion}</p>
-                                </div>
+                                    <p className="small text-white opacity-90 mb-0 fw-bold italic" style={{ lineHeight: '1.6' }}>{suggestion}</p>
+                                </motion.div>
                             )}
                         </div>
                         <button className="btn btn-primary btn-lg w-100 rounded-pill fw-black py-3 shadow-lg" onClick={onEnd}>RETURN TO DASHBOARD</button>
                     </motion.div>
                 ) : (
                     <>
-                        {isTimed && (
-                            <div className="mb-4 w-100" style={{background: 'rgba(255,255,255,0.05)', height: '4px', borderRadius: '2px'}}>
-                                <div className="timer-bar" style={{ width: `${(timeLeft/30)*100}%` }}></div>
-                            </div>
-                        )}
-                        
-                        <div className="mb-5 h2 challenge-text text-white">
-                            {questions[currentStep]?.challenge}
-                        </div>
-
-                        {!isAdaptive ? (
+                        {hasTimer && <div className="mb-4 w-100" style={{background: 'rgba(255,255,255,0.05)', height: '4px', borderRadius: '2px'}}><div className="timer-bar" style={{ width: `${(timeLeft/timerValue)*100}%` }}></div></div>}
+                        <div className="mb-5 h2 challenge-text text-white">{questions[currentStep]?.challenge}</div>
+                        {isAdaptive ? (
+                            <textarea className="custom-input mb-4 fs-5" style={{ minHeight: '180px' }} value={currentInput} onChange={e => setCurrentInput(e.target.value)} placeholder="Type your response..."/>
+                        ) : (
                             <div className="row g-3 mb-5">
                                 {questions[currentStep]?.options?.map(o => (
-                                    <div className="col-12 col-md-6" key={o}>
-                                        <button className={`btn w-100 py-3 rounded-4 fw-bold text-start px-4 transition-all ${currentInput === o ? 'btn-primary' : 'btn-outline-light opacity-50'}`} onClick={() => setCurrentInput(o)}>{o}</button>
-                                    </div>
+                                    <div className="col-12 col-md-6" key={o}><button className={`btn w-100 py-3 rounded-4 fw-bold text-start px-4 transition-all ${currentInput === o ? 'btn-primary' : 'btn-outline-light opacity-50'}`} onClick={() => setCurrentInput(o)}>{o}</button></div>
                                 ))}
                             </div>
-                        ) : (
-                            <textarea className="custom-input mb-5 fs-5 shadow-sm" style={{ minHeight: '180px' }} value={currentInput} onChange={e => setCurrentInput(e.target.value)} placeholder="Type your neural response..."/>
                         )}
-
-                        <button className="btn btn-primary w-100 py-3 fw-black rounded-4 shadow-lg mt-2" onClick={() => handleNext()} disabled={!currentInput}>
-                            {currentStep === questions.length - 1 ? "FINISH DIAGNOSTIC" : "NEXT CHALLENGE"}
+                        <button className="btn btn-primary w-100 py-3 fw-black rounded-4 shadow-lg mt-2 d-flex align-items-center justify-content-center gap-2" onClick={() => handleNext()} disabled={!currentInput || stepProcessing}>
+                            {stepProcessing ? <Loader2 className="animate-spin" size={20} /> : (currentStep === limit - 1 ? "FINISH DIAGNOSTIC" : "NEXT CHALLENGE")}
                         </button>
                     </>
                 )}
