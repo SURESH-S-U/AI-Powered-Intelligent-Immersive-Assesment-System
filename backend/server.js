@@ -243,6 +243,7 @@ app.post("/generate-assessment", async (req, res) => {
 });
 
 // --- UPDATED: evaluate-single for Adaptive logic ---
+// --- UPDATED: evaluate-single for better Feedback ---
 app.post("/evaluate-single", async (req, res) => {
     const { challenge, answer, difficulty } = req.body;
     try {
@@ -250,13 +251,15 @@ app.post("/evaluate-single", async (req, res) => {
         User Answer: "${answer}"
         Difficulty Level: ${difficulty}
         
-        CRITICAL INSTRUCTION: If the user answer is random text, keyboard mashing, unrelated to the question, or gibberish, you MUST score it 0.
+        Task: Provide a high-precision diagnostic evaluation. 
+        1. If the answer is gibberish or unrelated, score 0.
+        2. If partially correct, score 1-9 based on conceptual depth.
+        3. Provide "feedback" that explains exactly WHAT was missing or incorrect compared to the ideal scientific/logical fact. Avoid generic praise.
         
-        Task: Evaluate the response for conceptual accuracy.
-        Return ONLY a JSON object: 
+        Return ONLY JSON: 
         {
-          "score": number (0-10), 
-          "feedback": "A concise explanation of how the answer could be improved or what the ideal response would include."
+          "score": number, 
+          "feedback": "Detailed, factual explanation of the error or improvement."
         }`;
         
         const aiResponse = await callGitHubAI(prompt);
@@ -265,40 +268,49 @@ app.post("/evaluate-single", async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Single Eval Error" }); }
 });
 
-// --- UPDATED: evaluate-batch to save difficulty as 'Adaptive' ---
+// --- UPDATED: evaluate-batch for "Adaptive" labeling & better Suggestions ---
 app.post("/evaluate-batch", async (req, res) => {
     const { userId, username, answers, domains, sessionId, type, difficulty } = req.body;
     try {
         let evaluatedResults = [];
-        let suggestion = "";
         
-        // Ensure difficulty is labeled correctly for Adaptive types
-        const finalDifficulty = type === 'adaptive' ? "Adaptive" : difficulty;
+        // Check if it's from the assessment page
+        const isPrivateAssessment = sessionId && sessionId.startsWith("session_");
+        const finalDifficulty = isPrivateAssessment ? "Adaptive" : difficulty;
 
-        if (type === 'adaptive') {
+        if (type === 'adaptive' || isPrivateAssessment) {
+            // Text-based adaptive logic
             evaluatedResults = answers.map(ans => ({
                 score: ans.score || 0,
                 challenge: ans.challenge,
-                feedback: ans.feedback || "No feedback generated.",
-                answer: ans.answer
+                feedback: ans.feedback || "Conceptual gap detected in response.",
+                answer: ans.answer,
+                correctAnswer: ans.correctAnswer || ""
             }));
         } else {
+            // MCQ / General logic with strict correct/incorrect strings
             evaluatedResults = answers.map(ans => {
                 const isCorrect = ans.answer?.trim().toLowerCase() === ans.correctAnswer?.trim().toLowerCase();
                 return {
                     score: isCorrect ? 10 : 0,
                     challenge: ans.challenge,
-                    feedback: isCorrect ? "Neural synchronization successful." : `Sync mismatch. Target: ${ans.correctAnswer}`,
+                    feedback: isCorrect ? "Correct." : `Incorrect. The correct concept is: ${ans.correctAnswer}`,
                     answer: ans.answer,
                     correctAnswer: ans.correctAnswer
                 };
             });
         }
         
-        const aiReviewPrompt = `User responses: ${JSON.stringify(answers)}. Provide 3 focus points for improvement. Return JSON: {"suggestion": "string"}`;
+        // Suggestion Pattern Analysis
+        const aiReviewPrompt = `Context: ${domains.join(", ")} Assessment.
+        User Results: ${JSON.stringify(evaluatedResults)}.
+        Task: Identify exactly which technical sub-topic the user is failing at. 
+        Provide a 1-2 sentence technical, actionable suggestion.
+        Return JSON: {"suggestion": "string"}`;
+
         const aiResponse = await callGitHubAI(aiReviewPrompt);
         const data = cleanJSON(aiResponse);
-        suggestion = data?.suggestion || "Maintain focus on core conceptual clarity.";
+        const suggestion = data?.suggestion || "Review core fundamentals of the selected domain.";
 
         const savePromises = evaluatedResults.map((resItem, idx) => {
             return new Assessment({ 
@@ -308,7 +320,7 @@ app.post("/evaluate-batch", async (req, res) => {
                 answer: answers[idx].answer, 
                 correctAnswer: answers[idx].correctAnswer || "",
                 sessionId, type, 
-                difficulty: finalDifficulty, // Saves as "Adaptive"
+                difficulty: finalDifficulty, 
                 score: resItem.score, 
                 feedback: resItem.feedback,
                 suggestion: suggestion 

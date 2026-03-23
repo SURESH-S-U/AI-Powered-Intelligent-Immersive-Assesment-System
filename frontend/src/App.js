@@ -501,8 +501,9 @@ const ActiveSession = ({ user, domains, type, limit, timerValue, onEnd }) => {
             } catch (e) { feedbackForStep = "Neural sync timeout."; }
             setStepProcessing(false);
         } else if (!isAdaptive) {
-            scoreForStep = finalAnswer === currentQ.correctAnswer ? 10 : 0;
-            feedbackForStep = scoreForStep === 10 ? "Neural synchronization successful." : `Incorrect response.`;
+            const isCorrect = finalAnswer?.trim().toLowerCase() === currentQ.correctAnswer?.trim().toLowerCase();
+            scoreForStep = isCorrect ? 10 : 0;
+            feedbackForStep = isCorrect ? "Correct." : `Incorrect. The correct concept is: ${currentQ.correctAnswer}`;
         }
 
         const updatedAnswers = [...answers, { 
@@ -514,17 +515,22 @@ const ActiveSession = ({ user, domains, type, limit, timerValue, onEnd }) => {
         inputRef.current = "";
 
         if (currentStep < limit - 1) {
+            // DIFFICULTY ADJUSTMENT LOGIC
+            let nextDiff = difficulty;
+            if (scoreForStep >= 8) {
+                nextDiff = difficulty === "Beginner" ? "Intermediate" : "Advanced";
+            } else if (scoreForStep <= 4) {
+                nextDiff = difficulty === "Advanced" ? "Intermediate" : "Beginner";
+            }
+            setDifficulty(nextDiff);
+
             if (isAdaptive) {
-                let nextDiff = difficulty;
-                if (scoreForStep >= 7) nextDiff = difficulty === "Beginner" ? "Intermediate" : "Advanced";
-                else if (scoreForStep < 4) nextDiff = difficulty === "Advanced" ? "Intermediate" : "Beginner";
-                setDifficulty(nextDiff);
-                const used = questions.map(q => q.challenge);
-                const nextQ = adaptivePool[nextDiff].find(q => !used.includes(q.challenge)) || adaptivePool["Beginner"][0];
+                const used = updatedAnswers.map(q => q.challenge);
+                const nextQ = adaptivePool[nextDiff].find(q => !used.includes(q.challenge)) || adaptivePool["Beginner"].find(q => !used.includes(q.challenge));
                 setQuestions(prev => [...prev, nextQ]);
             }
             setCurrentStep(prev => prev + 1); 
-            if (hasTimer) setTimeLeft(timerValue); 
+            if (hasTimer) setTimeLeft(timerValue);
         } else { 
             clearInterval(timerRef.current);
             setEvaluating(true);
@@ -562,7 +568,7 @@ const ActiveSession = ({ user, domains, type, limit, timerValue, onEnd }) => {
             <div className="p-3 p-md-5" style={{...glassStyle, background: 'rgba(2, 6, 23, 0.8)'}}>
                 <div className="d-flex justify-content-between mb-4 align-items-center">
                     <span className="text-primary fw-bold small tracking-widest uppercase">
-                        {results ? 'Neural Diagnostics' : `Link Status: Q ${currentStep + 1}/${limit}`}
+                        {results ? 'Neural Diagnostics' : `Link Status: Q ${currentStep + 1}/${limit} (${difficulty})`}
                     </span>
                     <div className="d-flex align-items-center gap-3">
                         {!results && hasTimer && <div className="fw-black text-danger d-flex align-items-center gap-2" style={{fontFamily:'monospace', fontSize:'1.2rem'}}><Timer size={20}/> {timeLeft}s</div>}
@@ -583,20 +589,26 @@ const ActiveSession = ({ user, domains, type, limit, timerValue, onEnd }) => {
 
                         <div className="d-flex flex-column gap-4 mb-5">
                             {results.map((report, idx) => (
-                                <div key={idx} className="p-4 rounded-4 border border-white border-opacity-5 bg-dark shadow-lg text-white">
+                                <div key={idx} className="p-4 rounded-4 border border-white border-opacity-5 bg-dark shadow-lg text-white" style={{background: '#111827'}}>
                                     <div className="d-flex justify-content-between mb-3 align-items-start">
                                         <span className="badge bg-dark bg-opacity-10 text-primary border border-primary border-opacity-20 px-3">Challenge {idx + 1}</span>
-                                        <span className={`fw-black uppercase tracking-widest ${report.score >= 8 ? 'text-success' : (report.score >= 5 ? 'text-warning' : 'text-danger')}`} style={{ fontSize: '0.75rem' }}>
-                                            {isAdaptive ? `${report.score * 10}% Accuracy` : (report.score >= 8 ? 'CORRECT' : 'INCORRECT')}
+                                        <span className={`fw-black uppercase tracking-widest ${report.score >= 8 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '0.75rem' }}>
+                                            {report.score >= 8 ? 'CORRECT' : 'INCORRECT'}
                                         </span>
                                     </div>
-                                    <h6 className="fw-bold mb-3" style={{ fontSize: '0.95rem' }}>{report.challenge}</h6>
-                                    <div className="p-3 rounded-3 bg-black bg-opacity-20 border border-white border-opacity-5 mb-3">
-                                        <span className="text-xxs uppercase opacity-50 d-block mb-1">Your Input :</span>
-                                        <div className="small opacity-90">{answers[idx]?.answer || "N/A"}</div>
+                                    <h6 className="fw-bold mb-3" style={{ fontSize: '1.1rem' }}>{report.challenge}</h6>
+                                    
+                                    {/* USER INPUT BOX */}
+                                    <div className="p-3 rounded-3 border border-white border-opacity-5 mb-3" style={{background: '#1f2937'}}>
+                                        <span className="text-xxs uppercase opacity-50 d-block mb-1 fw-bold" style={{fontSize: '0.7rem'}}>
+                                            {report.score >= 8 ? "Your Input :" : "Operative Response :"}
+                                        </span>
+                                        <div className="small opacity-90 fw-bold">{answers[idx]?.answer || "N/A"}</div>
                                     </div>
-                                    <div className="p-3 rounded-3 border border-primary border-opacity-20 bg-primary bg-opacity-10">
-                                        <span className="text-xxs uppercase text-primary d-block mb-1 fw-bold">{isAdaptive ? "How the answer could be" : "Neural Feedback"}</span>
+
+                                    {/* NEURAL FEEDBACK BOX */}
+                                    <div className="p-3 rounded-3 border border-primary border-opacity-40 bg-primary bg-opacity-10" style={{border: '1px solid #3b82f6'}}>
+                                        <span className="text-xxs uppercase text-primary d-block mb-1 fw-bold" style={{fontSize: '0.7rem'}}>Neural Feedback</span>
                                         <div className="small opacity-100">{report.feedback}</div>
                                     </div>
                                 </div>
@@ -1250,13 +1262,17 @@ const ActiveRoomSession = ({ user, roomData, onEnd }) => {
 const ReportsView = ({ user, history, loading }) => {
     const [expandedSession, setExpandedSession] = useState(null);
     const metaBoxStyle = { background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)', border: '1px solid rgba(139, 92, 246, 0.3)', backdropFilter: 'blur(10px)', };
+    
+    // --- Styles for Badges/Labels only ---
     const getDiffStyle = (diff) => {
         switch (diff) {
-            case 'Advanced': return { color: '#dc4040', bg: 'rgba(236, 72, 153, 0.1)' };
-            case 'Intermediate': return { color: '#b7c334', bg: 'rgba(168, 85, 247, 0.1)' };
-            default: return { color: '#3ad73c', bg: 'rgba(59, 130, 246, 0.1)' };
+            case 'Adaptive': return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' }; // Orange
+            case 'Advanced': return { color: '#dc4040', bg: 'rgba(236, 72, 153, 0.1)' }; // Red
+            case 'Intermediate': return { color: '#b7c334', bg: 'rgba(168, 85, 247, 0.1)' }; // Lime/Yellow
+            default: return { color: '#3ad73c', bg: 'rgba(59, 130, 246, 0.1)' }; // Green
         }
     };
+
     const sessions = useMemo(() => {
         const groups = {};
         history.forEach(item => {
@@ -1270,12 +1286,13 @@ const ReportsView = ({ user, history, loading }) => {
             return s;
         }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }, [history]);
+
     const formatDate = (dateString) => { const d = new Date(dateString); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`; };
 
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="mb-5"><h2 className="fw-black mb-1">Assessment History</h2><p className="opacity-50 small">Detailed breakdown of your neural synchronization sessions.</p></div>
-            {loading ? ( <div className="text-center py-5"><Loader2 className="spinner-border text-primary" /></div> ) : (
+            {loading ? ( <div className="text-center py-5"><Loader2 className="spinner-border text-primary animate-spin" /></div> ) : (
                 <div className="row g-4"><div className="col-12">
                         {sessions.map((s) => {
                             const diffTheme = getDiffStyle(s.difficulty);
@@ -1295,7 +1312,10 @@ const ReportsView = ({ user, history, loading }) => {
                                         </div>
                                     </div>
                                     <div className="d-flex align-items-center gap-4">
-                                        <div className="progress flex-grow-1" style={{ height: '4px', background: 'rgba(255,255,255,0.05)' }}><motion.div initial={{ width: 0 }} animate={{ width: `${s.avgScore}%` }} className="progress-bar bg-primary shadow-sm" /></div>
+                                        {/* --- Fixed: Always Blue Progress Bar --- */}
+                                        <div className="progress flex-grow-1" style={{ height: '4px', background: 'rgba(255,255,255,0.05)' }}>
+                                            <motion.div initial={{ width: 0 }} animate={{ width: `${s.avgScore}%` }} className="progress-bar bg-primary shadow-sm" />
+                                        </div>
                                         <button className="btn btn-primary btn-sm rounded-pill px-3 px-md-4 fw-bold" style={{ fontSize: '0.65rem', letterSpacing: '1px' }} onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)}>{expandedSession === s.id ? "HIDE" : "VIEW"}</button>
                                     </div>
                                     <AnimatePresence>
@@ -1305,9 +1325,13 @@ const ReportsView = ({ user, history, loading }) => {
                                                     {s.items.map((item, idx) => {
                                                         const itemPercent = item.score * 10;
                                                         const isObjective = s.type === 'multi' || s.type === 'general';
+                                                        
+                                                        // Item status border logic
+                                                        const statusCol = item.score >= 8 ? '#10b981' : (item.score < 5 ? '#ef4444' : '#3b82f6');
+
                                                         return (
-                                                            <div key={idx} className="col-12"><div className="p-3 rounded-4" style={{ background: 'rgba(255,255,255,0.03)', borderLeft: `4px solid ${item.score >= 8 ? '#10b981' : (item.score < 5 ? '#ef4444' : '#3b82f6')}` }}>
-                                                                    <div className="d-flex justify-content-between align-items-center mb-2"><span className="small fw-black opacity-40 uppercase tracking-widest" style={{ fontSize: '0.6rem' }}>Challenge {idx + 1}</span><span className={`fw-black ${item.score >= 8 ? 'text-success' : (item.score < 5 ? 'text-danger' : 'text-primary')}`}>{isObjective ? (item.score >= 8 ? 'CORRECT' : 'INCORRECT') : `${itemPercent}%`}</span></div>
+                                                            <div key={idx} className="col-12"><div className="p-3 rounded-4" style={{ background: 'rgba(255,255,255,0.03)', borderLeft: `4px solid ${statusCol}` }}>
+                                                                    <div className="d-flex justify-content-between align-items-center mb-2"><span className="small fw-black opacity-40 uppercase tracking-widest" style={{ fontSize: '0.6rem' }}>Challenge {idx + 1}</span><span className={`fw-black`} style={{ color: statusCol }}>{isObjective ? (item.score >= 8 ? 'CORRECT' : 'INCORRECT') : `${itemPercent}%`}</span></div>
                                                                     <p className="fw-bold mb-2" style={{ fontSize: '0.9rem' }}>{item.challenge}</p>
                                                                     <div className="p-2 rounded-3" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)' }}><p className="small opacity-60 mb-0 italic" style={{ fontSize: '0.8rem' }}><span className="text-primary fw-bold">Feedback:</span> {item.feedback}</p></div>
                                                                 </div></div>
